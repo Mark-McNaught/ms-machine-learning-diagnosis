@@ -1,89 +1,88 @@
 # Dissertation Timesheet
-Weeks covering the period that includes Sept 12, 2025 through Mar 27, 2026. Weeks start Monday and end Sunday. Entries left blank for you to fill.
 
 ---
 
-## Week 1 (Monday 8 Sep 2025 - Sunday 14 Sep 2025)
+## Week 1 (Monday 15 Sep 2025 - Sunday 21 Sep 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 8 Sep 2025 | test | 6 |
-| Tuesday | 9 Sep 2025 |  testing | 1 |
-| Wednesday | 10 Sep 2025 |  |  |
-| Thursday | 11 Sep 2025 |  |  |
-| Friday | 12 Sep 2025 |  |  |
-| Saturday | 13 Sep 2025 |  |  |
-| Sunday | 14 Sep 2025 |  |  |
+|---:|---|---|---|
+| Monday | 15 Sep 2025 | 2.0 | Confirmed project allocation; watched project introductory video; began background research into MS. |
+| Tuesday | 16 Sep 2025 | 3.0 | Read guidance slides and recorded sessions; noted key points; background reading on ML fundamentals. |
+| Wednesday | 17 Sep 2025 | 3.5 | Drafted initial mind map of project ideas; reviewed dataset structure and sample images; explored ML course outline. |
+| Thursday | 18 Sep 2025 | 4.0 | Refined project ideas; identified potential datasets and ML approaches; started online ML course (modules 1–3). |
+| Friday | 19 Sep 2025 | 4.0 | Prepared discussion points for supervisor meeting; online ML course modules 4–6, exercises. |
+| Saturday | 20 Sep 2025 | 2.0 | Planned rough week-by-week timeline and milestones; notes and course exercises. |
+| Sunday | 21 Sep 2025 | 1.5 | Set up coding environment (Python, Conda, IDE, folders); prepared for Monday meeting; literature search for MS and ML. |
 
 ---
 
-## Week 2 (Monday 15 Sep 2025 - Sunday 21 Sep 2025)
+## Week 2 (Monday 22 Sep 2025 - Sunday 28 Sep 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 15 Sep 2025 |  |  |
-| Tuesday | 16 Sep 2025 |  |  |
-| Wednesday | 17 Sep 2025 |  |  |
-| Thursday | 18 Sep 2025 |  |  |
-| Friday | 19 Sep 2025 |  |  |
-| Saturday | 20 Sep 2025 |  |  |
-| Sunday | 21 Sep 2025 |  |  |
+|---:|---|---|---|
+| Monday | 22 Sep 2025 | 1.0 | Meeting 1 (Teams, 10:30): reviewed prior progress and set objectives. |
+| Tuesday | 23 Sep 2025 | 5.0 | Online ML course modules 7–9, exercises. |
+| Wednesday | 24 Sep 2025 | 4.5 | Online ML course modules 10–12, hands-on exercises. |
+| Thursday | 25 Sep 2025 | 4.0 | Researched CNNs, transfer learning, ImageNet models. |
+| Friday | 26 Sep 2025 | 3.5 | Literature review: ML in medical imaging, MS background. |
+| Saturday | 27 Sep 2025 | 3.0 | Organized references, notes; planned tutorials (dogs vs cats). |
+| Sunday | 28 Sep 2025 | 2.0 | Prepared datasets and environment checklist. |
 
 ---
 
-## Week 3 (Monday 22 Sep 2025 - Sunday 28 Sep 2025)
+## Week 3 (Monday 29 Sep 2025 - Sunday 5 Oct 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 22 Sep 2025 |  |  |
-| Tuesday | 23 Sep 2025 |  |  |
-| Wednesday | 24 Sep 2025 |  |  |
-| Thursday | 25 Sep 2025 |  |  |
-| Friday | 26 Sep 2025 |  |  |
-| Saturday | 27 Sep 2025 |  |  |
-| Sunday | 28 Sep 2025 |  |  |
+|---:|---|---|---|
+| Monday | 29 Sep 2025 | 3.0 | Completed online ML course exercises; reviewed key concepts. |
+| Tuesday | 30 Sep 2025 | 3.0 | Studied CNN architectures and transfer learning strategies. |
+| Wednesday | 1 Oct 2025 | 1.0 | Meeting 2 (SAWB 403, 10:00): progress update; no major issues. |
+| Thursday | 2 Oct 2025 | 3.5 | Reviewed research papers on ML diagnostics and MS. |
+| Friday | 3 Oct 2025 | 3.0 | Identified candidate models (ResNet family) for transfer learning. |
+| Saturday | 4 Oct 2025 | 2.5 | Planned experiments; dataset balancing checks. |
+| Sunday | 5 Oct 2025 | 2.0 | Prepared for tutorials (dogs vs cats). |
 
 ---
 
-## Week 4 (Monday 29 Sep 2025 - Sunday 5 Oct 2025)
+## Week 4 (Monday 6 Oct 2025 - Sunday 12 Oct 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 29 Sep 2025 |  |  |
-| Tuesday | 30 Sep 2025 |  |  |
-| Wednesday | 1 Oct 2025 |  |  |
-| Thursday | 2 Oct 2025 |  |  |
-| Friday | 3 Oct 2025 |  |  |
-| Saturday | 4 Oct 2025 |  |  |
-| Sunday | 5 Oct 2025 |  |  |
+|---:|---|---|---|
+| Monday | 6 Oct 2025 | 3.5 | Completed final stages of online ML course. |
+| Tuesday | 7 Oct 2025 | 4.0 | Completed dogs vs cats classification tutorial (~4 hrs). |
+| Wednesday | 8 Oct 2025 | 1.0 | Meeting 3 (SAWB 403, 10:00): reviewed tutorials and next steps. |
+| Thursday | 9 Oct 2025 | 4.0 | Completed lung cancer detection tutorial (~4 hrs); notes and reflections. |
+| Friday | 10 Oct 2025 | 3.0 | Began ResNet transfer learning implementation planning. |
+| Saturday | 11 Oct 2025 | 2.5 | Prepared code skeleton and data loader for experiments. |
+| Sunday | 12 Oct 2025 | 2.0 | Collected relevant papers on ResNet use in medical imaging. |
 
 ---
 
-## Week 5 (Monday 6 Oct 2025 - Sunday 12 Oct 2025)
+## Week 5 (Monday 13 Oct 2025 - Sunday 19 Oct 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 6 Oct 2025 |  |  |
-| Tuesday | 7 Oct 2025 |  |  |
-| Wednesday | 8 Oct 2025 |  |  |
-| Thursday | 9 Oct 2025 |  |  |
-| Friday | 10 Oct 2025 |  |  |
-| Saturday | 11 Oct 2025 |  |  |
-| Sunday | 12 Oct 2025 |  |  |
+|---:|---|---|---|
+| Monday | 13 Oct 2025 | 3.0 | Implemented and experimented with basic CNN on dataset. |
+| Tuesday | 14 Oct 2025 | 3.5 | Began ResNet50 transfer learning implementation; ran initial tests. |
+| Wednesday | 15 Oct 2025 | 1.0 | Meeting 4 (SAWB 403, 10:00): discussed GPU/resource limits, dataset issues. |
+| Thursday | 16 Oct 2025 | 3.0 | Evaluated training time, accuracy; observed overfitting risks. |
+| Friday | 17 Oct 2025 | 3.0 | Investigated smaller ResNet variants (ResNet18); considered augmentation. |
+| Saturday | 18 Oct 2025 | 2.0 | Drafted background section beginnings. |
+| Sunday | 19 Oct 2025 | 1.5 | Planned next experiments (ResNet18, dataset augmentation). |
 
 ---
 
-## Week 6 (Monday 13 Oct 2025 - Sunday 19 Oct 2025)
+## Week 6 (Monday 20 Oct 2025 - Sunday 26 Oct 2025)
 
 | Day | Date | Hours | Activity / Notes |
-|---:|---|---:|---|
-| Monday | 13 Oct 2025 |  |  |
-| Tuesday | 14 Oct 2025 |  |  |
-| Wednesday | 15 Oct 2025 |  |  |
-| Thursday | 16 Oct 2025 |  |  |
-| Friday | 17 Oct 2025 |  |  |
-| Saturday | 18 Oct 2025 |  |  |
-| Sunday | 19 Oct 2025 |  |  |
+|---:|---|---|---|
+| Monday | 20 Oct 2025 | 3.0 | Implemented basic ResNet18 model on dataset; ran initial tests. |
+| Tuesday | 21 Oct 2025 | 3.0 | Experimented with data augmentation (rotations, flips, intensity shifts). |
+| Wednesday | 22 Oct 2025 | 1.0 | Prepared progress notes for supervisor; logged experimental results. |
+| Thursday | 23 Oct 2025 | 3.0 | Adjusted model hyperparameters (learning rate, batch size); monitored overfitting. |
+| Friday | 24 Oct 2025 | 3.0 | Reviewed additional literature on MS MRI classification; refined methods. |
+| Saturday | 25 Oct 2025 | 2.0 | Started writing more of background section; integrated references. |
+| Sunday | 26 Oct 2025 | 1.5 | Planned next week’s experiments: cross-validation and metrics evaluation. |
 
 ---
 
