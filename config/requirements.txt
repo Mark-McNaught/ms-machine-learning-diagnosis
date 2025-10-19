@@ -3,3 +3,8 @@ pandas
 matplotlib
 kagglehub
 jupyter
+Pillow
+tensorflow
+scikit-learn
+torch
+torchvision
