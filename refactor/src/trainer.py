@@ -3,6 +3,11 @@ import torch.nn as nn
 import torch.optim as optim
 
 def train_model(model, train_loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), criterion=None, optimiser=None, num_epochs=15):
+    """
+    NEED TO REWORK THE OPTIMISER LOGIC IN ORDER TO ALLOW FOR DIFFERENT PARAMS TO BE TRAINED
+    CURRENTLY ONLY TRAINING THE HEAD THROUGH MODEL.MODEL.FC.PARAMETERS(), ALSO THEREFORE WANT
+    A SECOND EPOCH PARAMATER TO ALLOW FOR FINE-TUNING IF DESIRED
+    """
     if criterion is None:
         criterion = nn.BCEWithLogitsLoss()
     if optimiser is None:
