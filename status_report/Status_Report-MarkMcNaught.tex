@@ -1,0 +1,108 @@
+    
+\documentclass[11pt]{article}
+\usepackage{times}
+    \usepackage{fullpage}
+    
+    \title{Aiding diagnosis of Multiple Sclerosis with deep learning}
+    \author{Mark McNaught - 2764158M}
+
+    \begin{document}
+    \maketitle
+    
+    
+\section*{Project Outline}\label{proposal}
+
+\subsection*{Motivation}\label{motivation}
+Multiple Sclerosis (MS) is a complex neurological disorder whose diagnosis can be challenging and 
+time-consuming. Deep learning, particularly Convolutional Neural Networks (CNNs), offers the 
+opportunity to automate and potentially improve the accuracy and speed of diagnosis from MRI scans, 
+which are a primary diagnostic tool. This is especially important for the health sector and for 
+patients, as faster and more reliable diagnosis can lead to earlier interventions, improved patient 
+outcomes, and reduced clinician workload.
+
+
+
+\subsection*{Aims}\label{aims}
+
+The project aims to evaluate and compare deep learning architectures for automatic MS diagnosis 
+from MRI scans, determining which model configurations offer the most accurate and robust 
+performance. This includes implementing baseline CNNs, transfer-learning-based models, and 
+attention-enhanced variants; analysing their training behaviour; and identifying optimised 
+architectures. Where feasible, the project may also explore segmentation approaches to isolate 
+lesions or relevant regions, providing additional insight into MS diagnosis. Success will be measurable 
+through quantitative performance metrics including confusion matrices, accuracy, sensitivity/recall, 
+specificity, precision, and F1 scores, alongside clear comparative evaluation across model families 
+and evidence of improved diagnostic capability relative to baseline methods.
+
+
+\section*{Progress}\label{progress}
+\begin{itemize}
+    % \item Background research conducted on MS, MRI imaging, medical imaging diagnosis procedures, foundational machine learning concepts, and more specific ML approaches used in medical diagnostics.
+    % \item Completed a Stanford online machine learning course as well as several introductory ML projects (including a cats vs dogs classifier and a lung cancer detection model) to build the required foundational knowledge.
+    % \item Researched Convolutional Neural Networks (CNNs), transfer learning approaches, ImageNet architectures, and their applicability for medical imaging tasks.
+    % \item Reviewed research papers on MS diagnosis, medical imaging, and deep learning approaches used in diagnostic pipelines.
+    % \item Examined and further researched the provided dataset to determine key data qualities and characteristics.
+    % \item Implemented a basic CNN model to assess the complexity of the problem and act as a baseline for future comparisons.
+    % \item Implemented several ResNet18 model variants, including attention-augmented architectures using Convolutional Block Attention Modules (CBAMs), and augmented some models with Neighbourhood Components Analysis (NCA) and K-Nearest Neighbours (KNN).
+    % \item Tested, analysed, and compared training behaviour, overfitting and underfitting risks, and overall architecture performance.
+    % \item Completed initial research into segmentation techniques, RadImageNet for potential medical-specific transfer learning, additional datasets, and applications in medical imaging problems.
+    % \item Produced an initial draft of the background section for the dissertation write-up.
+    \item \textbf{Background Research and Foundational Concepts:} Completed an online machine learning course, conducted significant background research into Multiple Sclerosis (MS) and its presentation in MRI scans, machine learning in medical diagnostics, CNNs, and transfer learning.
+    \item \textbf{Initial Machine Learning Practice:} Completed several introductory ML projects (including a cats vs dogs classifier and a lung cancer detection model) to build the required foundational knowledge.
+    \item \textbf{Initial Model Implementation and Experimentation:} Implemented and experimented with a basic CNN model and a ResNet18 model with a custom head layer, reviewing initial performance metrics.
+    \item \textbf{Transfer Learning and Model Refinement:} Researched and implemented transfer learning with a ResNet18 model, including modifications such as an early training cut-off for the custom head, and trained the whole model for fewer epochs.
+    \item \textbf{Attention Mechanisms:} Implemented a ResNet18 model incorporating Convolutional Block Attention Modules (CBAM), which showed improved results over the basic ResNet18 approach.
+    \item \textbf{Advanced Techniques:} Created models implementing Neighborhood Component Analysis (NCA) and k-Nearest Neighbours (kNN) algorithms on top of existing architectures like the CBAM model.
+    \item \textbf{Architecture Performance Comparisons:} Reviewed performance across different model architectures to determine most promising approach.
+    \item \textbf{Dataset Analysis:} Researched the origin of the project dataset and began investigating potential data augmentation and balancing strategies.
+    \item \textbf{Write-up:} Began drafting the initial background section of the write-up.
+\end{itemize}
+
+\section*{Problems and Risks}\label{problems-and-risks}
+
+\subsection*{Problems}\label{problems}
+\begin{itemize}
+    \tightlist
+    \item \textbf{Initial Lack of Knowledge and Experience:} No prior experience of machine learning which required significant time spent developing foundational understanding.
+    \item \textbf{Computational Limitations:} Experienced limitations with available processing resources and training time, particularly when working with larger models, necessitating the use of smaller variants like ResNet18.
+    \item \textbf{Dataset Limitations:} The dataset is relatively small with potential issues from class imbalance (~1400 MS images and ~2100 non-MS images), which can lead to limited generalisability and potential overfitting.
+    \item \textbf{Minimal Initial Improvements:} The initial ResNet18 model showed minimal improvement over the basic CNN model, suggesting limitations due to training, dataset, or model configuration.
+    \item Time pressures caused by coursework commitments and personal circumstances resulting in reduced project progress during later weeks.
+\end{itemize}
+
+\subsection*{Risks}\label{risks}
+\begin{itemize}
+    \tightlist
+    \item \textbf{Scope of Architectures and Techniques:} There are many different architectures and techniques that could be explored, which could risk spreading efforts too thin. \textbf{Mitigation:} Will narrow the focus to a select few approaches during the beginning of Semester 2, allowing deeper experimentation and more detailed analysis.
+    \item \textbf{Evaluation Criteria:} Uncertainty in knowing when a model is performing satisfactorily or when further experimentation is worthwhile. \textbf{Mitigation:} Use clear performance metric thresholds (e.g. recall, accuracy, F1 score) and monitor improvement trends to decide when to stop.
+    \item \textbf{Overfitting:} The relatively small dataset increases the risk of models overfitting to the training data, particularly when using high-capacity deep learning models. \textbf{Mitigation:} Will confirm suitable cut-off epochs by plotting and comparing both training and validation loss for convergence; will also experiment with k-fold cross-validation to reduce bias.
+    \item \textbf{Computational Resources:} Larger, potentially more effective models (e.g., deeper ResNet architectures or ensemble models) require significant GPU resources, which are currently a limitation. \textbf{Mitigation:} Utilise University computing resources (e.g., ST Linux computers with GPUs or SoCS clusters) to enable the training and evaluation of large models.
+    \item \textbf{Workload Balancing:} Balancing the intensive model experimentation and write-up required for the dissertation with coursework from other classes, especially towards the end of the semester. \textbf{Mitigation:} Establishing a clear timeline for the second semester and the holidays, prioritising dissertation work to ensure timely completion.
+\end{itemize}
+    
+\section*{Plan}\label{plan}
+\begin{itemize}
+    \tightlist
+    \item 
+      \textbf{Winter Break:} Test and implement a range of seed values and training:validation:test splits; refine current models (ResNet18, CBAM, NCA/kNN); implement ensemble model; confirm overfitting and suitable cut-off epochs by plotting and analysing training/validation loss; create a comparison notebook; continue working on background section write-up. \textbf{Deliverables:} Updated models, ensemble model, comparison notebook, and initial background section write-up.
+    \item
+      \textbf{Weeks 1-2:} Explore additional model architectures and experiments (e.g., Inception, deeper ResNet variants); experiment with segmentation approaches if progress allows; continue working on write-up. \textbf{Deliverables:} Implemented additional models, initial segmentation experiments (if feasible), updated comparison notebook.
+    \item
+      \textbf{Weeks 3-4:} Continue experimenting with additional architectures and refining promising models; continue working on write-up. \textbf{Deliverables:} Updated models, refined configurations, expanded comparison notebook, completion of background section.
+    \item
+      \textbf{Weeks 5-6:} Refine selected models based on performance metrics; perform deeper analysis to identify optimal configurations; continue working on write-up. \textbf{Deliverables:} Refined models, updated performance metrics, detailed comparisons.
+    \item 
+      \textbf{Week 7:} Conduct any final experiments, confirm results, and complete outstanding analyses; continue working on write-up. \textbf{Deliverables:} Finalised experimental results and validated evaluations.
+    \item
+      \textbf{Weeks 8-10:} Dissertation write-up only. \textbf{Deliverable:} First draft submitted to supervisor two weeks before final deadline.
+\end{itemize}
+
+
+
+\section*{Ethics}
+This project uses an openly available dataset under a Creative Commons (CC BY-NC-SA 4.0) license, 
+permitting non-commercial use, adaptation, and redistribution with appropriate credit and 
+share-alike conditions. The dataset contains no personally identifiable information, and all 
+experiments comply with the licensing terms. No additional ethical approval is required.
+
+\end{document}
