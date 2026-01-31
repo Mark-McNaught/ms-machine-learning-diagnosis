@@ -2,17 +2,67 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-def train_model(model, train_loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), criterion=None, optimiser=None, num_epochs=15):
+import matplotlib.pyplot as plt
+
+def freeze_module(module):
+    # Freeze all parameters in the given module
+    for p in module.parameters():
+        p.requires_grad = False
+
+def unfreeze_module(module):
+    # Unfreeze all parameters in the given module
+    for p in module.parameters():
+        p.requires_grad = True
+
+def get_trainable_parameters(model, param_mode):
     """
-    NEED TO REWORK THE OPTIMISER LOGIC IN ORDER TO ALLOW FOR DIFFERENT PARAMS TO BE TRAINED
-    CURRENTLY ONLY TRAINING THE HEAD THROUGH MODEL.MODEL.FC.PARAMETERS(), ALSO THEREFORE WANT
-    A SECOND EPOCH PARAMATER TO ALLOW FOR FINE-TUNING IF DESIRED
+    Select parameters based on training mode.
+
+    Assumes:
+      - model.model is a torchvision ResNet18
+      - model.model.fc is the modified classification head
+      - CBAM modules live inside model.model
     """
-    if criterion is None:
-        criterion = nn.BCEWithLogitsLoss()
-    if optimiser is None:
-        optimiser = optim.Adam(model.model.fc.parameters(), lr=1e-3)
-    
+
+    if param_mode == "head":
+        # Freeze entire ResNet backbone (including CBAM)
+        freeze_module(model.model)
+
+        # Unfreeze classifier head
+        unfreeze_module(model.model.fc)
+
+        return model.model.fc.parameters()
+
+    elif param_mode == "all":
+        # Train everything
+        unfreeze_module(model.model)
+        return model.model.parameters()
+
+    else:
+        raise ValueError(f"Unknown parameter mode: {param_mode}")
+
+
+def train_model(model, train_loader, config_name, train_configs, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), decision_threshold=0.5):
+    # Validate config
+    if config_name not in train_configs:
+        raise ValueError(f"Config '{config_name}' not found")
+
+    # Establishing training regime based on selected config
+    config = train_configs[config_name]
+
+    num_epochs = config["num_epochs"]
+    lr = config["lr"]
+    criterion = config["criterion"]
+    optimiser_class = config["optimiser"]
+    param_mode = config["parameters"]
+
+
+    # Initial optimiser setup
+    trainable_params = get_trainable_parameters(model, param_mode)
+    optimiser = optimiser_class(trainable_params, lr=lr)
+
+    model.to(device)
+
     losses = []
     accuracies = []
 
@@ -36,7 +86,7 @@ def train_model(model, train_loader, device=torch.device("cuda" if torch.cuda.is
 
             running_loss += loss.item() * images.size(0)
 
-            preds = (torch.sigmoid(outputs) > 0.5).float()
+            preds = (torch.sigmoid(outputs) > decision_threshold).float()
             correct += (preds == labels).sum().item()
             total += labels.size(0)
 
@@ -46,5 +96,35 @@ def train_model(model, train_loader, device=torch.device("cuda" if torch.cuda.is
         losses.append(epoch_loss)
         accuracies.append(epoch_acc)
 
-        print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f} - Acc: {epoch_acc:.4f}")
+        print(
+            f"[{config_name}] "
+            f"Epoch {epoch+1}/{num_epochs} "
+            f"- Loss: {epoch_loss:.4f} "
+            f"- Acc: {epoch_acc:.4f}"
+        )
+
     return losses, accuracies
+
+
+def plot(losses, accuracies, config_name):
+    """
+    Plots training loss over epochs given a training config.
+    """
+    epochs = range(1, len(losses) + 1)
+    
+    plt.figure(figsize=(10, 5))
+
+    # Plot Loss in Red
+    plt.plot(epochs, losses, color='red', marker='o', 
+             linewidth=2, label='Training Loss')
+
+    # Formatting the axis
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss Value')
+    plt.title(f'Training Loss: {config_name}')
+    
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.show()

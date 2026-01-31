@@ -103,16 +103,10 @@ class BasicBlockCBAMPost(nn.Module):
 
 class BaseResNet18(nn.Module):
     """ Base ResNet18 model with a custom classification head for binary use cases"""
-    def __init__(self, num_classes=1, freeze_backbone=True):
+    def __init__(self, num_classes=1):
         super().__init__()
-
         # Load pre-trained ResNet18 model
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-
-        # Freeze pretrained layers if specified
-        if freeze_backbone:
-            for param in self.model.parameters():
-                param.requires_grad = False
 
         # Modify the final fully connected layer for binary classification
         num_features = self.model.fc.in_features
@@ -184,36 +178,25 @@ class CBAMResNet18(nn.Module):
         - "block_pre"  : CBAM inside each BasicBlock (before shortcut)
         - "block_post" : CBAM inside each BasicBlock (after shortcut)
     """
-    def __init__(self, num_classes=1, freeze_backbone=True, cbam_location="end"):
+    def __init__(self, num_classes=1, cbam_location="end"):
         super().__init__()
         self.cbam_location = cbam_location
-
-        # Load pretrained ResNet18
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 
-        # Freeze backbone if required
-        if freeze_backbone:
-            for p in self.model.parameters():
-                p.requires_grad = False
-
-        # Block-level CBAM
         if cbam_location in ["block_pre", "block_post"]:
-            wrapper = (
-                BasicBlockCBAMPre
-                if cbam_location == "block_pre"
-                else BasicBlockCBAMPost
-            )
-
+            wrapper = BasicBlockCBAMPre if cbam_location == "block_pre" else BasicBlockCBAMPost
             self.model.layer1 = self._wrap_layer(self.model.layer1, 64, wrapper)
             self.model.layer2 = self._wrap_layer(self.model.layer2, 128, wrapper)
             self.model.layer3 = self._wrap_layer(self.model.layer3, 256, wrapper)
             self.model.layer4 = self._wrap_layer(self.model.layer4, 512, wrapper)
-
-            self.cbam_end = None
-
-        # End-only CBAM 
-        else:
-            self.cbam_end = CBAM(512)
+        
+        elif cbam_location == "end":
+            # CBAM layers are injected directly into the model structure
+            # by replacing the global avgpool with a sequence of (CBAM -> AvgPool)
+            self.model.avgpool = nn.Sequential(
+                CBAM(512),
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
 
         # Classification head
         num_features = self.model.fc.in_features
@@ -225,30 +208,12 @@ class CBAMResNet18(nn.Module):
         )
 
     def _wrap_layer(self, layer, channels, wrapper):
-        return nn.Sequential(
-            *[wrapper(block, channels) for block in layer]
-        )
+        return nn.Sequential(*[wrapper(block, channels) for block in layer])
 
     def forward(self, x):
-        x = self.model.conv1(x)
-        x = self.model.bn1(x)
-        x = self.model.relu(x)
-        x = self.model.maxpool(x)
-
-        x = self.model.layer1(x)
-        x = self.model.layer2(x)
-        x = self.model.layer3(x)
-        x = self.model.layer4(x)
-
-        if self.cbam_end is not None:
-            x = self.cbam_end(x)
-
-        x = self.model.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.model.fc(x)
-
-        return x
-
+        # Forward pass is identical for ALL variations
+        # as the CBAM logic is embedded inside the model's components
+        return self.model(x)
 
 #####################################################################################################
 ########################################### Model Factory ###########################################
@@ -259,6 +224,7 @@ def get_model(architecture="base", device=torch.device("cuda" if torch.cuda.is_a
     # Base ResNet18
     if architecture == "base":
         model = BaseResNet18()
+
     # ResNet18 + CBAM Variations
     elif architecture == "cbam_end":
         model = CBAMResNet18(cbam_location="end")
