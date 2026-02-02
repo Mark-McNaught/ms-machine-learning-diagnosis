@@ -5,9 +5,8 @@ from PIL import Image
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, classification_report
 
-def evaluate_model(test_loader, y_true, y_pred, model=None, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-
-    if model is None:
+def evaluate_model(model=None, test_loader=None, y_true=None, y_pred=None, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    if model is not None:
         model.eval()
         y_true = []
         y_pred = []

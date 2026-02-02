@@ -99,6 +99,50 @@ class BasicBlockCBAMPost(nn.Module):
         return out
 
 
+class SEBlock(nn.Module):
+    def __init__(self, channels, reduction=16):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y
+
+class BasicBlockSEPre(nn.Module):
+    """ SE applied after block convolutions, before residual addition """
+    def __init__(self, block: nn.Module, channels: int):
+        super().__init__()
+        self.block = block
+        self.se = SEBlock(channels)
+
+    def forward(self, x):
+        identity = x
+
+        out = self.block.conv1(x)
+        out = self.block.bn1(out)
+        out = self.block.relu(out)
+
+        out = self.block.conv2(out)
+        out = self.block.bn2(out)
+
+        # Apply SE to the residual branch
+        out = self.se(out)
+
+        if self.block.downsample is not None:
+            identity = self.block.downsample(x)
+
+        out += identity
+        out = self.block.relu(out)
+        return out
+
 #####################################################################################################
 ####################################### Model Architectures  ########################################
 #####################################################################################################
@@ -121,7 +165,6 @@ class BaseResNet18(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
 
 
 class CBAMResNet18(nn.Module):
@@ -181,6 +224,62 @@ class CBAMResNet18(nn.Module):
             # Standard full pass for training/inference
             return self.model(x)
 
+class SEResNet18(nn.Module):
+    """
+    ResNet18 with flexible SE placement.
+
+    se_location:
+        - "end"       : single SE block before classifier (after layer 4)
+        - "block_pre" : SE inside each BasicBlock (before shortcut)
+    """
+    def __init__(self, num_classes=1, se_location="end"):
+        super().__init__()
+        self.se_location = se_location
+        self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+
+        if se_location == "block_pre":
+            # Wrap every residual block in layers 1-4 with SE
+            self.model.layer1 = self._wrap_layer(self.model.layer1, 64, BasicBlockSEPre)
+            self.model.layer2 = self._wrap_layer(self.model.layer2, 128, BasicBlockSEPre)
+            self.model.layer3 = self._wrap_layer(self.model.layer3, 256, BasicBlockSEPre)
+            self.model.layer4 = self._wrap_layer(self.model.layer4, 512, BasicBlockSEPre)
+        else:
+            # "end" location: Inject SE into the global avgpool sequence
+            self.model.avgpool = nn.Sequential(
+                SEBlock(512),
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
+
+        # Custom classification head to match your pipeline
+        num_features = self.model.fc.in_features
+        self.model.fc = nn.Sequential(
+            nn.Linear(num_features, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes)
+        )
+
+    def _wrap_layer(self, layer, channels, wrapper):
+        return nn.Sequential(*[wrapper(block, channels) for block in layer])
+
+    def forward(self, x, return_features=False):
+        if return_features:
+            # Manual forward pass to capture features for NCA/kNN
+            x = self.model.conv1(x)
+            x = self.model.bn1(x)
+            x = self.model.relu(x)
+            x = self.model.maxpool(x)
+
+            x = self.model.layer1(x)
+            x = self.model.layer2(x)
+            x = self.model.layer3(x)
+            x = self.model.layer4(x)
+            
+            x = self.model.avgpool(x)
+            return torch.flatten(x, 1) # Returns 512-dim vector
+
+        return self.model(x)
+
 #####################################################################################################
 ########################################### Model Factory ###########################################
 #####################################################################################################
@@ -198,6 +297,12 @@ def get_model(architecture="base", device=torch.device("cuda" if torch.cuda.is_a
         model = CBAMResNet18(cbam_location="block_pre")
     elif architecture == "cbam_block_post":
         model = CBAMResNet18(cbam_location="block_post")  
+    
+    # ResNet18 + SE Variations
+    elif architecture == "se_end":
+        model= SEResNet18(se_location="end")
+    elif architecture == "se_block_pre":
+        model = SEResNet18(se_location="block_pre")
           
     else:
         raise ValueError(f"Unknown architecture: {architecture}")
