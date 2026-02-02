@@ -2,7 +2,59 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import numpy as np
 import matplotlib.pyplot as plt
+
+from sklearn.neighbors import NeighborhoodComponentsAnalysis
+from sklearn.neighbors import KNeighborsClassifier
+
+
+
+def get_features(model, loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    """ Generates feature vectors and labels from a DataLoader using the model."""
+    model.eval()
+    features, labels = [], []
+    with torch.no_grad():
+        for imgs, lbls in loader:
+            imgs = imgs.to(device)
+            feat = model(imgs, return_features=True) #uses internal flag to extract features and not get final classifications
+            features.append(feat.cpu().numpy())
+            labels.append(lbls.numpy())
+    return np.concatenate(features), np.concatenate(labels)
+
+def get_nca_features(X_train_features, y_train_features_labels, X_test_features, TARGET_DIM=256, SEED=42, MAX_ITER=500, TOL=1e-5):
+    """ Applies NCA to reduce feature dimensions. """
+    nca = NeighborhoodComponentsAnalysis(
+        n_components=TARGET_DIM, 
+        random_state=SEED, 
+        max_iter=MAX_ITER,
+        tol=TOL
+    )
+    print(f"get_nca_features()>>> Fitting NCA to reduce 512 features to {TARGET_DIM}...")
+    
+    # NCA is fitted ONLY on the training data
+    nca.fit(X_train_features, y_train_features_labels) 
+
+    # Transform both train and test features
+    X_train_selected = nca.transform(X_train_features)
+    X_test_selected = nca.transform(X_test_features)
+
+    print(f"get_nca_features()>>> Reduced Train Feature Shape: {X_train_selected.shape}")
+    print(f"get_nca_features()>>> Reduced Test Feature Shape: {X_test_selected.shape}")
+
+    return X_train_selected, X_test_selected
+
+def get_and_train_knn(X_train_selected, y_train_features_labels, NUM_NEIGHBOURS=20):
+    knn_classifier = KNeighborsClassifier(
+        n_neighbors=NUM_NEIGHBOURS, 
+        weights='distance'
+        ) 
+
+    print("get_and_train_knn()>>> Training kNN classifier on NCA selected deep features...")
+    knn_classifier.fit(X_train_selected, y_train_features_labels)
+
+    return knn_classifier
+
 
 def freeze_module(module):
     # Freeze all parameters in the given module
