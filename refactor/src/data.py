@@ -13,22 +13,22 @@ from sklearn.model_selection import train_test_split
 ######################## Functions for downloading and processing MS dataset ########################
 #####################################################################################################
 
-def get_dataset(relative_path="../../data/raw"):
+def get_dataset(DATA_DIR):
     """
     Downloads the MS dataset from Kagglehub if it is not already downloaded.
     Returns the path to the dataset as well as a list of available subdatasets.
     """
     
     # Set custom download directory
-    os.environ["KAGGLEHUB_CACHE"] = relative_path
+    os.environ["KAGGLEHUB_CACHE"] = DATA_DIR
 
     # Download dataset if not already present
-    if not os.listdir(relative_path):
+    if not os.listdir(DATA_DIR):
         path = kagglehub.dataset_download("buraktaci/multiple-sclerosis")
         print("get_dataset()>>> Dataset downloaded to:", path)
     else:
-        print(f"get_dataset()>>> Dataset already exists in {relative_path}")
-        path = os.path.join(relative_path, "datasets/buraktaci/multiple-sclerosis/versions/1/MS/")
+        print(f"get_dataset()>>> Dataset already exists in {DATA_DIR}")
+        path = os.path.join(DATA_DIR, "datasets/buraktaci/multiple-sclerosis/versions/1/MS/")
     
     # List available categories
     categories = os.listdir(path)

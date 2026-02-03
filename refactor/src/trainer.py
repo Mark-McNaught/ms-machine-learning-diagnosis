@@ -9,6 +9,25 @@ from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 
 
+def save_weights(model, save_path):
+    # Save only the state dictionary
+    torch.save(model.state_dict(), save_path)
+    print(f"save_weights()>>> Model weights saved to {save_path}")
+
+def load_weights(model, save_path, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    # Load the state dictionary
+    weights = torch.load(save_path)
+
+    # Apply the weights to the model
+    model.load_state_dict(weights)
+
+    # Set to eval mode
+    model.eval()
+    model.to(device)
+
+    print("load_weights()>>> Model loaded successfully and set to evaluation mode.")
+    return model
+
 
 def get_features(model, loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """ Generates feature vectors and labels from a DataLoader using the model."""
