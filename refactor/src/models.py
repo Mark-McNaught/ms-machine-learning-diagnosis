@@ -8,6 +8,70 @@ import numpy as np
 ###################################### Model Component Modules ######################################
 #####################################################################################################
 
+# ── Classifier Head ───────────────────────────────────────────────────────────
+#
+# All ResNet18 variants in this file use the same binary classification head.
+# The head type is selected via build_classifier_head(in_features, head=...).
+#
+# Supported values:
+#   "mlp"    — two-layer MLP: Linear(512->128)->ReLU->Dropout(0.3)->Linear(128->1)  [default]
+#   "linear" — single linear layer: Linear(512->1)
+#
+# Pass head= through get_model() to switch all models simultaneously:
+#   get_model("cbam_end", head="linear")
+#
+# Both are compatible with BCEWithLogitsLoss + Adam + the two-phase protocol.
+# No changes to trainer.py or criterion are required for either option.
+
+VALID_HEADS = ("mlp", "linear")
+
+def build_classifier_head(in_features: int, num_classes: int = 1, head: str = "mlp") -> nn.Sequential:
+    """
+    Builds the binary classification head attached to the ResNet18 backbone.
+
+    Args:
+        in_features : int        — output dim of the backbone (512 for ResNet18).
+        num_classes : int        — 1 for binary classification with BCEWithLogitsLoss.
+        head        : str        — head architecture. One of: "mlp", "linear".
+
+    Head designs:
+
+        "mlp" (default) — two-layer MLP with bottleneck and dropout:
+            Linear(in_features -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> 1)
+            Standard projection head for transfer learning. Adds modest non-linear
+            capacity above the backbone. Matched to BCEWithLogitsLoss + Adam.
+
+        "linear" — single linear layer (linear probe):
+            Linear(in_features -> 1)
+            Minimal parameters. Relies entirely on the backbone producing linearly
+            separable features. Lowest overfitting risk on small datasets. Useful
+            as an ablation to confirm that performance gains come from backbone
+            optimisations rather than head capacity. Matched to BCEWithLogitsLoss + Adam.
+            Note: Phase 1 trains trivially fast with one layer — 10 epochs is generous
+            but not harmful. No protocol changes required.
+
+    Returns:
+        nn.Sequential — classifier head, ready to assign to model.fc.
+
+    Raises:
+        ValueError — if head is not one of VALID_HEADS.
+    """
+    if head not in VALID_HEADS:
+        raise ValueError(f"Unknown head type '{head}'. Choose from: {VALID_HEADS}")
+
+    if head == "linear":
+        return nn.Sequential(
+            nn.Linear(in_features, num_classes)
+        )
+
+    # "mlp" — default
+    return nn.Sequential(
+        nn.Linear(in_features, 128),
+        nn.ReLU(),
+        nn.Dropout(0.3),
+        nn.Linear(128, num_classes)
+    )
+
 class ChannelAttention(nn.Module):
     """ Channel Attention (like SE) """
     def __init__(self, in_channels, reduction=16):
@@ -249,19 +313,14 @@ class BasicBlockCBAMIsolatedPre(nn.Module):
 
 class BaseResNet18(nn.Module):
     """ Base ResNet18 model with a custom classification head for binary use cases"""
-    def __init__(self, num_classes=1):
+    def __init__(self, num_classes=1, head="mlp"):
         super().__init__()
         # Load pre-trained ResNet18 model
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 
         # Modify the final fully connected layer for binary classification
         num_features = self.model.fc.in_features
-        self.model.fc = nn.Sequential(
-            nn.Linear(num_features, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, num_classes)
-        )
+        self.model.fc = build_classifier_head(num_features, num_classes, head)
 
     def forward(self, x):
         return self.model(x)
@@ -276,7 +335,7 @@ class CBAMResNet18(nn.Module):
         - "block_pre"  : CBAM inside each BasicBlock (before shortcut)
         - "block_post" : CBAM inside each BasicBlock (after shortcut)
     """
-    def __init__(self, num_classes=1, cbam_location="end"):
+    def __init__(self, num_classes=1, cbam_location="end", head="mlp"):
         super().__init__()
         self.cbam_location = cbam_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -297,12 +356,7 @@ class CBAMResNet18(nn.Module):
 
         # Classification head
         num_features = self.model.fc.in_features
-        self.model.fc = nn.Sequential(
-            nn.Linear(num_features, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, num_classes)
-        )
+        self.model.fc = build_classifier_head(num_features, num_classes, head)
 
     def _wrap_layer(self, layer, channels, wrapper):
         return nn.Sequential(*[wrapper(block, channels) for block in layer])
@@ -332,7 +386,7 @@ class SEResNet18(nn.Module):
         - "end"       : single SE block before classifier (after layer 4)
         - "block_pre" : SE inside each BasicBlock (before shortcut)
     """
-    def __init__(self, num_classes=1, se_location="end"):
+    def __init__(self, num_classes=1, se_location="end", head="mlp"):
         super().__init__()
         self.se_location = se_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -352,12 +406,7 @@ class SEResNet18(nn.Module):
 
         # Custom classification head to match your pipeline
         num_features = self.model.fc.in_features
-        self.model.fc = nn.Sequential(
-            nn.Linear(num_features, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, num_classes)
-        )
+        self.model.fc = build_classifier_head(num_features, num_classes, head)
 
     def _wrap_layer(self, layer, channels, wrapper):
         return nn.Sequential(*[wrapper(block, channels) for block in layer])
@@ -392,7 +441,7 @@ class CBAMIsolatedResNet18(nn.Module):
         - "end"       : single CBAMIsolated before classifier (mirrors cbam_end / se_end)
         - "block_pre" : CBAMIsolated inside each BasicBlock, before shortcut add
     """
-    def __init__(self, num_classes=1, cbam_iso_location="end"):
+    def __init__(self, num_classes=1, cbam_iso_location="end", head="mlp"):
         super().__init__()
         self.cbam_iso_location = cbam_iso_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -410,12 +459,7 @@ class CBAMIsolatedResNet18(nn.Module):
             )
 
         num_features = self.model.fc.in_features
-        self.model.fc = nn.Sequential(
-            nn.Linear(num_features, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, num_classes)
-        )
+        self.model.fc = build_classifier_head(num_features, num_classes, head)
 
     def _wrap_layer(self, layer, channels):
         return nn.Sequential(*[BasicBlockCBAMIsolatedPre(block, channels) for block in layer])
@@ -439,35 +483,55 @@ class CBAMIsolatedResNet18(nn.Module):
 ########################################### Model Factory ###########################################
 #####################################################################################################
 
-def get_model(architecture="base", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    """ Factory helper function to instantiate models by name """
+def get_model(architecture="base", head="mlp", device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    """
+    Factory helper function to instantiate models by name.
+
+    Args:
+        architecture : str  — model variant key. See options below.
+        head         : str  — classifier head type: "mlp" (default) or "linear".
+                              Applies to all architectures. No changes to trainer.py
+                              or criterion are required for either option.
+        device       : torch.device
+
+    Architecture keys:
+        "base"                  — plain ResNet18
+        "cbam_end"              — ResNet18 + single CBAM before avgpool
+        "cbam_block_pre"        — ResNet18 + CBAM inside each block (pre-shortcut)
+        "cbam_block_post"       — ResNet18 + CBAM inside each block (post-shortcut)
+        "se_end"                — ResNet18 + single SE before avgpool
+        "se_block_pre"          — ResNet18 + SE inside each block (pre-shortcut)
+        "cbam_isolated_end"     — ResNet18 + CBAMIsolated (SE channel + spatial) before avgpool
+        "cbam_isolated_block_pre" — ResNet18 + CBAMIsolated inside each block
+    """
     # Base ResNet18
     if architecture == "base":
-        model = BaseResNet18()
+        model = BaseResNet18(head=head)
 
     # ResNet18 + CBAM Variations
     elif architecture == "cbam_end":
-        model = CBAMResNet18(cbam_location="end")
+        model = CBAMResNet18(cbam_location="end", head=head)
     elif architecture == "cbam_block_pre":
-        model = CBAMResNet18(cbam_location="block_pre")
+        model = CBAMResNet18(cbam_location="block_pre", head=head)
     elif architecture == "cbam_block_post":
-        model = CBAMResNet18(cbam_location="block_post")  
-    
+        model = CBAMResNet18(cbam_location="block_post", head=head)
+
     # ResNet18 + SE Variations
     elif architecture == "se_end":
-        model= SEResNet18(se_location="end")
+        model = SEResNet18(se_location="end", head=head)
     elif architecture == "se_block_pre":
-        model = SEResNet18(se_location="block_pre")
+        model = SEResNet18(se_location="block_pre", head=head)
 
     # ResNet18 + CBAMIsolated (spatial attention isolation experiment)
-    # Channel attention is SE-style (avg-pool only) — identical to SEBlock.
-    # Spatial attention added on top. Directly isolates spatial attention contribution.
     elif architecture == "cbam_isolated_end":
-        model = CBAMIsolatedResNet18(cbam_iso_location="end")
+        model = CBAMIsolatedResNet18(cbam_iso_location="end", head=head)
     elif architecture == "cbam_isolated_block_pre":
-        model = CBAMIsolatedResNet18(cbam_iso_location="block_pre")
-          
+        model = CBAMIsolatedResNet18(cbam_iso_location="block_pre", head=head)
+
     else:
-        raise ValueError(f"Unknown architecture: {architecture}")
-    print(f"get_model()>>> \n", model)
+        raise ValueError(f"Unknown architecture: '{architecture}'. "
+                         f"Valid options: base, cbam_end, cbam_block_pre, cbam_block_post, "
+                         f"se_end, se_block_pre, cbam_isolated_end, cbam_isolated_block_pre")
+
+    print(f"get_model()>>> architecture={architecture!r}  head={head!r}")
     return model.to(device)
