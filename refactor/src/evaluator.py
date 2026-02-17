@@ -21,11 +21,19 @@ def evaluate_model(model=None, test_loader=None, y_true=None, y_pred=None, devic
                 y_true.extend(labels.cpu().numpy().astype(int))
                 y_pred.extend(preds)
 
-    print("Accuracy:", accuracy_score(y_true, y_pred))
-    print("Precision:", precision_score(y_true, y_pred))
-    print("Recall:", recall_score(y_true, y_pred))
-    print("Confusion Matrix:\n", confusion_matrix(y_true, y_pred))
-    print("Classification Report:\n", classification_report(y_true, y_pred))
+    acc = accuracy_score(y_true, y_pred)
+    prec = precision_score(y_true, y_pred)
+    rec = recall_score(y_true, y_pred)
+    conf = confusion_matrix(y_true, y_pred)
+    report = classification_report(y_true, y_pred)
+
+    print("Accuracy:", acc)
+    print("Precision:", prec)
+    print("Recall:", rec)
+    print("Confusion Matrix:\n", conf)
+    print("Classification Report:\n", report)
+
+    return acc, prec, rec, conf, report
 
 
 def predict_model(model, X_test, y_test, test_transform, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):

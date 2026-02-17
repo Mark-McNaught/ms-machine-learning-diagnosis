@@ -32,9 +32,10 @@ def get_dataset(DATA_DIR):
     
     # List available categories
     categories = os.listdir(path)
-    print("get_dataset()>>> Available categories:", categories)
+    sorted_categories = sorted(categories) # Sort categories for consistent ordering
+    print("get_dataset()>>> Available categories:", sorted_categories)
 
-    return path, categories
+    return path, sorted_categories
 
 def get_classes(path, categories, axial=True, saggital=False, visualise=True, num_samples=3):
     """
