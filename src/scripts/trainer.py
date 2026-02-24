@@ -1,5 +1,3 @@
-import os
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,97 +8,9 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 
-
-def save_weights(model, save_path):
-    """Save model state dictionary."""
-    torch.save(model.state_dict(), save_path)
-    print(f"save_weights()>>> Model weights saved to {save_path}")
-
-def load_weights(model, save_path, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    """Load model state dictionary."""
-    weights = torch.load(save_path)
-    model.load_state_dict(weights)
-    model.eval()
-    model.to(device)
-    print("load_weights()>>> Model loaded successfully and set to evaluation mode.")
-    return model
-
-
-def get_features(model, loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-    """Generates feature vectors and labels from a DataLoader using the model."""
-    model.eval()
-    features, labels = [], []
-    with torch.no_grad():
-        for imgs, lbls in loader:
-            imgs = imgs.to(device)
-            feat = model(imgs, return_features=True)
-            features.append(feat.cpu().numpy())
-            labels.append(lbls.numpy())
-    return np.concatenate(features), np.concatenate(labels)
-
-def get_nca_features(X_train_features, y_train_features_labels, X_test_features, 
-                      TARGET_DIM=256, SEED=42, MAX_ITER=500, TOL=1e-5):
-    """Applies NCA to reduce feature dimensions."""
-    nca = NeighborhoodComponentsAnalysis(
-        n_components=TARGET_DIM, 
-        random_state=SEED, 
-        max_iter=MAX_ITER,
-        tol=TOL
-    )
-    print(f"get_nca_features()>>> Fitting NCA to reduce 512 features to {TARGET_DIM}...")
-    
-    nca.fit(X_train_features, y_train_features_labels)
-    
-    X_train_selected = nca.transform(X_train_features)
-    X_test_selected = nca.transform(X_test_features)
-
-    print(f"get_nca_features()>>> Reduced Train Feature Shape: {X_train_selected.shape}")
-    print(f"get_nca_features()>>> Reduced Test Feature Shape: {X_test_selected.shape}")
-
-    return X_train_selected, X_test_selected
-
-def get_and_train_knn(X_train_selected, y_train_features_labels, NUM_NEIGHBOURS=20):
-    """Trains kNN classifier on NCA-transformed features."""
-    knn_classifier = KNeighborsClassifier(
-        n_neighbors=NUM_NEIGHBOURS, 
-        weights='distance'
-    ) 
-
-    print("get_and_train_knn()>>> Training kNN classifier on NCA selected deep features...")
-    knn_classifier.fit(X_train_selected, y_train_features_labels)
-
-    return knn_classifier
-
-def validate_model(model, val_loader, criterion, 
-                   device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), 
-                   decision_threshold=0.5):
-    """
-    Evaluates model on validation set without updating weights.
-    """
-    model.eval()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-    
-    with torch.no_grad():
-        for images, labels in val_loader:
-            images = images.to(device)
-            labels = labels.float().unsqueeze(1).to(device)
-            
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            
-            running_loss += loss.item() * images.size(0)
-            
-            preds = (torch.sigmoid(outputs) > decision_threshold).float()
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-    
-    val_loss = running_loss / total
-    val_acc = correct / total
-    
-    return val_loss, val_acc
-
+########################################################################################################
+########################################### Module Selector ###########################################
+########################################################################################################
 
 def freeze_module(module):
     """Freeze all parameters in the given module."""
@@ -185,6 +95,88 @@ def get_trainable_parameters(model, param_mode, verbose=False):
         raise ValueError(f"Unknown parameter mode: '{param_mode}'. "
                          f"Valid options: 'head_and_attention', 'head', 'all'")
 
+########################################################################################################
+########################################### NCA-kNN Pipeline ###########################################
+########################################################################################################
+
+def get_features(model, loader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    """Generates feature vectors and labels from a DataLoader using the model."""
+    model.eval()
+    features, labels = [], []
+    with torch.no_grad():
+        for imgs, lbls in loader:
+            imgs = imgs.to(device)
+            feat = model(imgs, return_features=True)
+            features.append(feat.cpu().numpy())
+            labels.append(lbls.numpy())
+    return np.concatenate(features), np.concatenate(labels)
+
+def get_nca_features(X_train_features, y_train_features_labels, X_test_features, 
+                      TARGET_DIM=256, SEED=42, MAX_ITER=500, TOL=1e-5):
+    """Applies NCA to reduce feature dimensions."""
+    nca = NeighborhoodComponentsAnalysis(
+        n_components=TARGET_DIM, 
+        random_state=SEED, 
+        max_iter=MAX_ITER,
+        tol=TOL
+    )
+    print(f"get_nca_features()>>> Fitting NCA to reduce 512 features to {TARGET_DIM}...")
+    
+    nca.fit(X_train_features, y_train_features_labels)
+    
+    X_train_selected = nca.transform(X_train_features)
+    X_test_selected = nca.transform(X_test_features)
+
+    print(f"get_nca_features()>>> Reduced Train Feature Shape: {X_train_selected.shape}")
+    print(f"get_nca_features()>>> Reduced Test Feature Shape: {X_test_selected.shape}")
+
+    return X_train_selected, X_test_selected
+
+def get_and_train_knn(X_train_selected, y_train_features_labels, NUM_NEIGHBOURS=20):
+    """Trains kNN classifier on NCA-transformed features."""
+    knn_classifier = KNeighborsClassifier(
+        n_neighbors=NUM_NEIGHBOURS, 
+        weights='distance'
+    ) 
+
+    print("get_and_train_knn()>>> Training kNN classifier on NCA selected deep features...")
+    knn_classifier.fit(X_train_selected, y_train_features_labels)
+
+    return knn_classifier
+
+########################################################################################################
+########################################### Regular Pipeline ###########################################
+########################################################################################################
+
+def validate_model(model, val_loader, criterion, 
+                   device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), 
+                   decision_threshold=0.5):
+    """
+    Evaluates model on validation set without updating weights.
+    """
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images = images.to(device)
+            labels = labels.float().unsqueeze(1).to(device)
+            
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            
+            running_loss += loss.item() * images.size(0)
+            
+            preds = (torch.sigmoid(outputs) > decision_threshold).float()
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+    
+    val_loss = running_loss / total
+    val_acc = correct / total
+    
+    return val_loss, val_acc
 
 def train_model(model, train_loader, val_loader, config_name, train_configs, 
                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), 
@@ -218,7 +210,7 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
     patience_counter = 0
 
     for epoch in range(num_epochs):
-        # ========== TRAINING PHASE ==========
+        # Training phase
         model.train()
 
         running_loss = 0.0
@@ -248,7 +240,7 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
         losses.append(epoch_loss)
         accuracies.append(epoch_acc)
 
-        # ========== VALIDATION PHASE ==========
+        # Validation phase (if val_loader is provided)
         if val_loader is not None:
             val_loss, val_acc = validate_model(model, val_loader, criterion, device, decision_threshold)
             val_losses.append(val_loss)
@@ -263,7 +255,7 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
                 f"- Val Acc: {val_acc:.4f}"
             )
             
-            # ========== EARLY STOPPING CHECK ==========
+            # Early stopping logic
             if early_stopping_patience is not None:
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -282,88 +274,3 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
             )
 
     return losses, accuracies, val_losses, val_accuracies
-
-
-def plot(losses, accuracies, config_name):
-    """Plots training loss over epochs."""
-    epochs = range(1, len(losses) + 1)
-    
-    plt.figure(figsize=(10, 5))
-
-    plt.plot(epochs, losses, color='red', marker='o', 
-             linewidth=2, label='Training Loss')
-
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss Value')
-    plt.title(f'Training Loss: {config_name}')
-    
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_training_validation(
-    losses_p1, val_losses_p1, accs_p1, val_accs_p1,
-    losses_p2, val_losses_p2, accs_p2, val_accs_p2,
-    model_name: str = "model",
-    save_dir: str = "training-imgs",
-    show: bool = True,
-):
-    """
-    Plots training and validation curves for both phases and saves the figure.
-    """
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(f"{model_name} — Training Curves", fontsize=16, fontweight="bold", y=1.01)
-
-    # ── Phase 1 Loss ──────────────────────────────────────────────────────────
-    axes[0, 0].plot(losses_p1,     "b-", marker="o", label="Train Loss")
-    axes[0, 0].plot(val_losses_p1, "r-", marker="s", label="Val Loss")
-    axes[0, 0].set_title("Phase 1: Loss",     fontsize=14, fontweight="bold")
-    axes[0, 0].set_xlabel("Epoch")
-    axes[0, 0].set_ylabel("Loss")
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-
-    # ── Phase 1 Accuracy ──────────────────────────────────────────────────────
-    axes[0, 1].plot(accs_p1,     "b-", marker="o", label="Train Acc")
-    axes[0, 1].plot(val_accs_p1, "r-", marker="s", label="Val Acc")
-    axes[0, 1].set_title("Phase 1: Accuracy", fontsize=14, fontweight="bold")
-    axes[0, 1].set_xlabel("Epoch")
-    axes[0, 1].set_ylabel("Accuracy")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
-
-    # ── Phase 2 Loss ──────────────────────────────────────────────────────────
-    axes[1, 0].plot(losses_p2,     "b-", marker="o", label="Train Loss")
-    axes[1, 0].plot(val_losses_p2, "r-", marker="s", label="Val Loss")
-    axes[1, 0].set_title("Phase 2: Loss",     fontsize=14, fontweight="bold")
-    axes[1, 0].set_xlabel("Epoch")
-    axes[1, 0].set_ylabel("Loss")
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3)
-
-    # ── Phase 2 Accuracy ──────────────────────────────────────────────────────
-    axes[1, 1].plot(accs_p2,     "b-", marker="o", label="Train Acc")
-    axes[1, 1].plot(val_accs_p2, "r-", marker="s", label="Val Acc")
-    axes[1, 1].set_title("Phase 2: Accuracy", fontsize=14, fontweight="bold")
-    axes[1, 1].set_xlabel("Epoch")
-    axes[1, 1].set_ylabel("Accuracy")
-    axes[1, 1].legend()
-    axes[1, 1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-
-    # ── Save ──────────────────────────────────────────────────────────────────
-    out_dir = os.path.join(save_dir, model_name)
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "training_curves.png")
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    print(f"[plot_utils] Saved → {os.path.abspath(out_path)}")
-
-    if show:
-        plt.show()
-    plt.close(fig)
-
-    return out_path
