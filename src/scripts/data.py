@@ -7,7 +7,7 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 
 
 #####################################################################################################
@@ -128,7 +128,6 @@ def get_transforms(IMG_SIZE=(224, 224)):
     return train_transform, test_transform
 
 
-# Worker initialisation for reproducibility 
 def _worker_init_fn(worker_id):
     """
     Seed each DataLoader worker for reproducibility.
@@ -137,71 +136,116 @@ def _worker_init_fn(worker_id):
     np.random.seed(torch.initial_seed() % 2**32)
 
 
-def get_data_loaders(image_paths, labels, train_transform, test_transform, 
-                      val_split=0.15, test_split=0.20, batch_size=32, SEED=42):
+def get_trainval_test_split(image_paths, labels, test_split=0.20, SEED=42):
     """
-    Splits the dataset into train/validation/test sets with stratification.
-    
+    Performs the outer stratified split to produce a held-out test set and a
+    train+val pool. Called ONCE before any k-fold or training begins.
+    The test set is never used during training, validation, or hyperparameter
+    selection — only for final evaluation after all decisions are made.
+
     Args:
-        image_paths: List of image file paths
-        labels: List of labels (0 or 1)
-        train_transform: Augmentation transforms for training
-        test_transform: Transforms for validation and test (no augmentation)
-        val_split: Proportion for validation set (default 0.15 = 15%)
-        test_split: Proportion for test set (default 0.20 = 20%)
-        batch_size: Batch size for dataloaders
-        SEED: Random seed for reproducibility
-    
+        image_paths: List of all image file paths
+        labels:      List of corresponding labels (0 or 1)
+        test_split:  Proportion to hold out as test set (default 0.20)
+        SEED:        Random seed — fix this and never change it
+
     Returns:
-        train_loader, val_loader, test_loader, (X_test, y_test)
-    
-    Default split: 65% train, 15% val, 20% test
+        X_trainval, y_trainval  — pool used for all k-fold CV
+        X_test,     y_test      — held-out test set, set aside until final eval
     """
-    
-    # First split: separate test set
     X_trainval, X_test, y_trainval, y_test = train_test_split(
-        image_paths, labels, 
-        test_size=test_split, 
-        random_state=SEED, 
+        image_paths, labels,
+        test_size=test_split,
+        random_state=SEED,
         stratify=labels
     )
-    
-    # Second split: separate validation from training
-    val_size_adjusted = val_split / (1 - test_split)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_trainval, y_trainval, 
-        test_size=val_size_adjusted, 
-        random_state=SEED, 
-        stratify=y_trainval
-    )
-    
-    print(f"get_data_loaders()>>> Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
-    print(f"get_data_loaders()>>> Proportions: Train {len(X_train)/len(image_paths):.1%}, "
-          f"Val {len(X_val)/len(image_paths):.1%}, Test {len(X_test)/len(image_paths):.1%}")
-    
-    # Create datasets
+
+    total = len(image_paths)
+    print(f"get_trainval_test_split()>>> Train+Val pool : {len(X_trainval)} "
+          f"({len(X_trainval)/total:.1%})")
+    print(f"get_trainval_test_split()>>> Held-out test  : {len(X_test)} "
+          f"({len(X_test)/total:.1%})")
+
+    tv_ms  = sum(y_trainval)
+    tst_ms = sum(y_test)
+    print(f"get_trainval_test_split()>>> TrainVal class ratio — "
+          f"MS: {tv_ms}  Non-MS: {len(y_trainval)-tv_ms}")
+    print(f"get_trainval_test_split()>>> Test     class ratio — "
+          f"MS: {tst_ms}  Non-MS: {len(y_test)-tst_ms}")
+
+    return X_trainval, y_trainval, X_test, y_test
+
+
+def get_fold_loaders(X_trainval, y_trainval, fold_idx,
+                     train_transform, test_transform,
+                     n_splits=5, batch_size=32, SEED=42):
+    """
+    Returns train and validation DataLoaders for a single fold of stratified k-fold CV.
+    Call this inside the fold loop — produces a different train/val split each time.
+
+    Fold assignments are deterministic for a given (n_splits, SEED) pair,
+    so results are fully reproducible.
+
+    Args:
+        X_trainval:       List of image paths in the train+val pool
+        y_trainval:       Corresponding labels
+        fold_idx:         Which fold to use as validation (0-indexed, 0 to n_splits-1)
+        train_transform:  Augmentation transforms for training split
+        test_transform:   No-augmentation transforms for validation split
+        n_splits:         Number of folds (3 for grid search, 5 for final eval)
+        batch_size:       Batch size for both loaders
+        SEED:             Must match the seed used in get_trainval_test_split()
+
+    Returns:
+        train_loader, val_loader
+    """
+    X_arr = np.array(X_trainval)
+    y_arr = np.array(y_trainval)
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+    splits = list(skf.split(X_arr, y_arr))
+
+    train_idx, val_idx = splits[fold_idx]
+
+    X_train, y_train = X_arr[train_idx].tolist(), y_arr[train_idx].tolist()
+    X_val,   y_val   = X_arr[val_idx].tolist(),   y_arr[val_idx].tolist()
+
+    print(f"get_fold_loaders()>>> Fold {fold_idx+1}/{n_splits} — "
+          f"Train: {len(X_train)},  Val: {len(X_val)}")
+
     train_dataset = MRIDataset(X_train, y_train, transform=train_transform)
-    val_dataset = MRIDataset(X_val, y_val, transform=test_transform)
-    test_dataset = MRIDataset(X_test, y_test, transform=test_transform)
-    
-    # Create dataloaders with worker seeding
+    val_dataset   = MRIDataset(X_val,   y_val,   transform=test_transform)
+
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
-        shuffle=True,
-        worker_init_fn=_worker_init_fn
+        train_dataset, batch_size=batch_size,
+        shuffle=True, worker_init_fn=_worker_init_fn
     )
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=batch_size, 
-        shuffle=False,
-        worker_init_fn=_worker_init_fn
+        val_dataset, batch_size=batch_size,
+        shuffle=False, worker_init_fn=_worker_init_fn
     )
-    test_loader = DataLoader(
-        test_dataset, 
-        batch_size=batch_size, 
-        shuffle=False,
-        worker_init_fn=_worker_init_fn
+
+    return train_loader, val_loader
+
+
+def get_test_loader(X_test, y_test, test_transform, batch_size=32):
+    """
+    Wraps the held-out test set in a DataLoader for final evaluation.
+    Only call this after all training and model selection is complete.
+
+    Args:
+        X_test:          List of test image paths (from get_trainval_test_split)
+        y_test:          Corresponding labels
+        test_transform:  No-augmentation transforms
+        batch_size:      Batch size
+
+    Returns:
+        test_loader
+    """
+    test_dataset = MRIDataset(X_test, y_test, transform=test_transform)
+    test_loader  = DataLoader(
+        test_dataset, batch_size=batch_size,
+        shuffle=False, worker_init_fn=_worker_init_fn
     )
-    
-    return train_loader, val_loader, test_loader, (X_test, y_test)
+    print(f"get_test_loader()>>> Test loader ready — {len(X_test)} samples")
+    return test_loader
