@@ -195,9 +195,10 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
     criterion = config["criterion"]
     optimiser_class = config["optimiser"]
     param_mode = config["parameters"]
+    weight_decay = config.get("weight_decay", 0.0)  # optional; default 0 preserves existing behaviour
 
     trainable_params = get_trainable_parameters(model, param_mode, verbose=verbose)
-    optimiser = optimiser_class(trainable_params, lr=lr)
+    optimiser = optimiser_class(trainable_params, lr=lr, weight_decay=weight_decay)
 
     model.to(device)
 

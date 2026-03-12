@@ -3,47 +3,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 import torch
+from torchmetrics.classification import BinaryCalibrationError
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report, roc_auc_score
-
-
-def compute_ece(y_true, probs, n_bins=10):
-    """
-    Computes Expected Calibration Error (ECE).
-
-    Splits predictions into n_bins equal-width confidence bins.
-    For each bin, measures the gap between mean predicted confidence
-    and actual accuracy. ECE is the weighted average of these gaps.
-
-    A perfectly calibrated model has ECE = 0. Values closer to 0
-    indicate the model's confidence scores are trustworthy — important
-    for clinical deployment where a "90% confident" prediction should
-    be correct ~90% of the time.
-
-    Args:
-        y_true: list/array of ground-truth binary labels (0 or 1)
-        probs:  list/array of predicted probabilities (sigmoid outputs, 0-1)
-        n_bins: number of confidence bins (default 10, i.e. 0-0.1, 0.1-0.2, ...)
-
-    Returns:
-        ece: float - Expected Calibration Error
-    """
-    y_true = np.array(y_true)
-    probs  = np.array(probs)
-    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
-    ece = 0.0
-
-    for i in range(n_bins):
-        lo, hi = bin_edges[i], bin_edges[i + 1]
-        # Include upper bound only on the last bin to avoid missing prob=1.0
-        in_bin = (probs >= lo) & (probs < hi) if i < n_bins - 1 else (probs >= lo) & (probs <= hi)
-        n_in_bin = in_bin.sum()
-
-        if n_in_bin > 0:
-            mean_confidence = probs[in_bin].mean()    # avg predicted prob in bin
-            mean_accuracy   = y_true[in_bin].mean()   # fraction actually correct
-            ece += (n_in_bin / len(probs)) * abs(mean_confidence - mean_accuracy)
-
-    return ece
 
 
 def evaluate_model(model=None, test_loader=None, y_true=None, y_pred=None, y_probs=None,
@@ -70,7 +31,7 @@ def evaluate_model(model=None, test_loader=None, y_true=None, y_pred=None, y_pro
                 labels = labels.clone().detach().float().to(device)
                 outputs = model(images)
                 probs = torch.sigmoid(outputs).cpu().numpy().flatten()
-                preds = (probs > 0.5).astype(int)
+                preds = (probs >= 0.5).astype(int)
                 y_true.extend(labels.cpu().numpy().astype(int))
                 y_pred.extend(preds)
                 y_probs.extend(probs)   # store probabilities
@@ -88,8 +49,17 @@ def evaluate_model(model=None, test_loader=None, y_true=None, y_pred=None, y_pro
     # the area under the ROC curve - a threshold-independent performance measure.
     auc = roc_auc_score(y_true, y_probs) if y_probs is not None else float("nan")
 
-    # ECE: calibration quality
-    ece = compute_ece(y_true, y_probs) if y_probs is not None else float("nan")
+    # ECE: calibration quality via torchmetrics BinaryCalibrationError
+    # Equal-width binning (n_bins=10), weighted average of confidence-accuracy gaps.
+    # A perfectly calibrated model has ECE = 0.
+    if y_probs is not None:
+        ece_metric = BinaryCalibrationError(n_bins=10, norm='l1')
+        ece = ece_metric(
+            torch.tensor(y_probs, dtype=torch.float32),
+            torch.tensor(y_true,  dtype=torch.long)
+        ).item()
+    else:
+        ece = float("nan")
 
     # Print and return results
     print(f"Accuracy  : {acc:.4f}")
@@ -120,7 +90,7 @@ def predict_model(model, X_test, y_test, test_transform, device=torch.device("cu
         with torch.no_grad():
             output = model(img_tensor)
             prob = torch.sigmoid(output).item()
-            pred_label = "MS" if prob > 0.5 else "Control"
+            pred_label = "MS" if prob >= 0.5 else "Control"
         true_label = "MS" if y_test[idx] == 1 else "Control"
         row = i // 5
         col = i % 5

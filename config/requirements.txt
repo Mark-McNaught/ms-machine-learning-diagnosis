@@ -9,3 +9,5 @@ scikit-learn>=1.2
 torch
 torchvision
 timm
+seaborn
+torchmetrics
