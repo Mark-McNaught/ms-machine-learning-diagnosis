@@ -1,3 +1,0 @@
-head,val_f1_fmt,val_acc_fmt,val_loss_fmt,mean_p2_epochs,n_folds
-linear,0.9174 ± 0.0272,0.9372 ± 0.0195,0.1996 ± 0.0813,6.8,5
-mlp,0.9027 ± 0.0193,0.9220 ± 0.0190,0.2629 ± 0.0725,9.2,5

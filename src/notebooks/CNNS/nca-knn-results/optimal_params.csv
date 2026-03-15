@@ -1,4 +1,0 @@
-backbone,target_dim,k,mean_f1,std_f1
-base,64,3,0.984451,0.016203
-cbam_end,256,5,0.984457,0.019967
-se_block_pre,128,9,0.976722,0.020679
