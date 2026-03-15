@@ -33,6 +33,7 @@ def save_weights(model, save_path):
     torch.save(model.state_dict(), save_path)
     print(f"save_weights()>>> Model weights saved to {save_path}")
 
+
 def load_weights(model, save_path, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """Load model state dictionary."""
     weights = torch.load(save_path)
@@ -43,11 +44,56 @@ def load_weights(model, save_path, device=torch.device("cuda" if torch.cuda.is_a
     return model
 
 
-def plot(losses, accuracies, config_name, val_losses=None, val_accuracies=None, 
+def save_fig(fig, save_dir, stem, formats=("png", "svg"), dpi=150):
+    """
+    Save a matplotlib figure as PNG and/or SVG.
+
+    Saves to `save_dir / stem.<ext>` for each format requested.
+    SVGs embed fonts as paths so files are self-contained and render
+    correctly in LaTeX, Inkscape, and browser viewers.
+
+    Args:
+        fig:       matplotlib Figure object to save.
+        save_dir:  Directory to save into (str or Path). Created if missing.
+        stem:      Filename without extension, e.g. "srq1_test_results".
+        formats:   Tuple of format strings. Default ("png", "svg").
+                   Any format accepted by matplotlib's savefig is valid.
+        dpi:       Resolution for raster formats (PNG). Ignored for SVG.
+
+    Returns:
+        List of Path objects for the saved files.
+
+    Example:
+        fig, ax = plt.subplots()
+        ax.plot([1, 2, 3])
+        utils.save_fig(fig, PLOTS_DIR, "my_chart")
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for fmt in formats:
+        out_path = save_dir / f"{stem}.{fmt}"
+        fig.savefig(
+            out_path,
+            dpi=dpi,
+            bbox_inches="tight",
+            format=fmt,
+        )
+        saved.append(out_path)
+        print(f"save_fig()>>> Saved → {out_path}")
+
+    return saved
+
+
+def plot(losses, accuracies, config_name, val_losses=None, val_accuracies=None,
          save_dir=None, model_name="model", show=True):
-    """Plots training (and optionally validation) loss and accuracy over epochs."""
+    """
+    Plot training (and optionally validation) loss and accuracy over epochs.
+    Saves as PNG and SVG when save_dir is provided.
+    """
     epochs = range(1, len(losses) + 1)
-    
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(f"{model_name} — {config_name}", fontsize=14, fontweight="bold")
 
@@ -75,10 +121,7 @@ def plot(losses, accuracies, config_name, val_losses=None, val_accuracies=None,
 
     if save_dir:
         out_dir = Path(save_dir) / model_name
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{config_name}_curves.png"
-        fig.savefig(out_path, dpi=150, bbox_inches="tight")
-        print(f"[plot] Saved → {out_path.resolve()}")
+        save_fig(fig, out_dir, f"{config_name}_curves")
 
     if show:
         plt.show()
