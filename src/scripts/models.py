@@ -485,11 +485,11 @@ class CNNViTHybrid(nn.Module):
     CNN-ViT Hybrid for SRQ3.
 
     Architecture (following Dosovitskiy et al., 2021):
-        1. CNN backbone  — any ResNet18 variant → 7×7×512 spatial feature map
+        1. CNN backbone  — any ResNet18 variant → 7x7x512 spatial feature map
         2. Tokenisation  — flatten spatial dims → 49 tokens of 512-dim
         3. Projection    — Linear(512 → 384) maps CNN channels to DeiT embedding dim
-        4. CLS token     — learnable [CLS] prepended → sequence of 50 × 384
-        5. Pos embedding — learnable positional embeddings (50 × 384) added
+        4. CLS token     — learnable [CLS] prepended → sequence of 50 x 384
+        5. Pos embedding — learnable positional embeddings (50 x 384) added
         6. Transformer   — pretrained DeiT-Small encoder blocks + LayerNorm
         7. Head          — classify from [CLS] token output
 
@@ -497,12 +497,12 @@ class CNNViTHybrid(nn.Module):
         For cbam_end, se_end, and cbam_isolated_end the attention module lives
         inside self.model.avgpool, which this class intentionally bypasses —
         the spatial map is taken directly from layer4. The attention gate itself
-        does not fire in the hybrid forward pass; however, layers 1–4 carry
+        does not fire in the hybrid forward pass; however, layers 1-4 carry
         representational benefits learned under attention supervision during
         arch-eval training. This is stated explicitly in the methodology.
 
         For block-level variants (cbam_block_pre, cbam_block_post, se_block_pre,
-        cbam_isolated_block_pre), attention modules are embedded inside layer1–4
+        cbam_isolated_block_pre), attention modules are embedded inside layer1-4
         and fire normally during the hybrid forward pass.
 
     Args:
