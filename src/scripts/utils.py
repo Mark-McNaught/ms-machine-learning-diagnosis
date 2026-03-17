@@ -5,6 +5,8 @@ import random
 import numpy as np
 import torch
 
+import csv
+
 import matplotlib.pyplot as plt
 
 
@@ -27,6 +29,42 @@ def set_seed(seed=42):
     
     print(f"Random seed set to {seed} for Python, NumPy, and PyTorch")
 
+def load_completed_runs(results_file, key_cols):
+    """
+    Returns a set of tuples representing already-completed runs, for skip logic.
+
+    Args:
+        results_file: Path to the CSV results file.
+        key_cols:     List of (column_name, type) pairs that uniquely identify a run.
+                      e.g. [("architecture", str), ("fold", int)]
+                           [("lr_phase2", float), ("weight_decay", float), ("fold", int)]
+
+    Returns:
+        Set of tuples — one per completed (error-free) row.
+    """
+    completed = set()
+    if results_file.exists():
+        with open(results_file, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["error"] == "":
+                    completed.add(tuple(t(row[col]) for col, t in key_cols))
+    return completed
+
+def append_result(results_file, fieldnames, row_dict):
+    """Append one result row to CSV, writing header if the file is new."""
+    write_header = not results_file.exists()
+    with open(results_file, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row_dict)
+
+def weights_path_for(weights_dir, arch, fold_idx):
+    """Return the .pt save path for a given architecture and fold."""
+    arch_dir = Path(weights_dir) / arch
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    return arch_dir / f"fold_{fold_idx}.pt"
 
 def save_weights(model, save_path):
     """Save model state dictionary."""

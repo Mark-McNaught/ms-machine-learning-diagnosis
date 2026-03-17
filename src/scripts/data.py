@@ -38,7 +38,7 @@ def get_dataset(DATA_DIR):
 
     return path, sorted_categories
 
-def get_classes(path, categories, axial=True, saggital=True, visualise=True, num_samples=3):
+def get_classes(path, categories, axial=True, saggital=False, visualise=True, num_samples=3):
     """
     Returns selected classes from the dataset, and if specified, visualises sample images.
     Axial and Saggital flags to determine what parts of the dataset to include.
