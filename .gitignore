@@ -1,3 +1,6 @@
 # Ignore datasets
-
 data/raw
+
+# Ignore model training curves and other generated plots
+*.png
+*.svg
