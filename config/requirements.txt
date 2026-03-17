@@ -11,3 +11,4 @@ torchvision
 timm
 seaborn
 torchmetrics
+thop
