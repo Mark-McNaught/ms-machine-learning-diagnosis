@@ -29,11 +29,15 @@ def get_trainable_parameters(model, param_mode, verbose=False):
         "head_and_attention" - For CNN models (ResNet18 + SE/CBAM)
             Freeze: backbone conv/bn layers
             Train: attention modules + classifier head
-        
+
         "head" - For ViT models (DeiT, EfficientFormer)
             Freeze: transformer encoder
             Train: classifier head only
-        
+
+        "bridge" - For CNNViTHybrid Phase 1 (SRQ3)
+            Freeze: CNN backbone + DeiT encoder blocks
+            Train: token_proj, cls_token, pos_embed, head
+
         "all" - For Phase 2 fine-tuning (all models)
             Train: everything
     """
@@ -42,13 +46,13 @@ def get_trainable_parameters(model, param_mode, verbose=False):
         # For CNN models with attention
         for name, param in model.model.named_parameters():
             # Freeze backbone layers
-            if any(layer in name for layer in ['conv1', 'bn1', 'layer1', 'layer2', 
+            if any(layer in name for layer in ['conv1', 'bn1', 'layer1', 'layer2',
                                                  'layer3', 'layer4', 'downsample']):
                 # But NOT if they're part of attention modules
                 if not any(attn in name for attn in ['cbam', 'se', '.ca.', '.sa.', 'cbam_iso']):
                     param.requires_grad = False
                     continue
-            
+
             # Explicitly unfreeze attention modules and classifier head
             if any(attn in name for attn in ['cbam', 'se', '.ca.', '.sa.', 'cbam_iso', 'fc']):
                 param.requires_grad = True
@@ -66,34 +70,85 @@ def get_trainable_parameters(model, param_mode, verbose=False):
             print()
 
         return filter(lambda p: p.requires_grad, model.model.parameters())
-    
+
     elif param_mode == "head":
         # For ViT models: freeze transformer, train only head
         freeze_module(model.model)
         unfreeze_module(model.head)
-        
+
         if verbose:
             print("\n=== Phase 1: head mode (ViT) ===")
             print("Transformer encoder frozen, head trainable")
             print()
-        
+
         return model.head.parameters()
+
+    elif param_mode == "bridge":
+        # For CNNViTHybrid Phase 1: freeze backbone + encoder, train bridge only
+        for p in model.parameters():
+            p.requires_grad = False
+        for p in model.token_proj.parameters():
+            p.requires_grad = True
+        model.cls_token.requires_grad = True
+        model.pos_embed.requires_grad  = True
+        for p in model.head.parameters():
+            p.requires_grad = True
+
+        if verbose:
+            n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            n_total     = sum(p.numel() for p in model.parameters())
+            print("\n=== Phase 1: bridge mode (CNNViTHybrid) ===")
+            print(f"Backbone + DeiT encoder frozen")
+            print(f"Trainable: token_proj, cls_token, pos_embed, head "
+                  f"({n_trainable:,} / {n_total:,} params)")
+            print()
+
+        return filter(lambda p: p.requires_grad, model.parameters())
+
+    elif param_mode == "bridge_and_encoder":
+        # For CNNViTHybrid Phase 2: keep CNN backbone frozen, train everything else
+        # Freeze backbone only
+        for p in model.backbone.parameters():
+            p.requires_grad = False
+        # Unfreeze bridge + encoder
+        for p in model.token_proj.parameters():
+            p.requires_grad = True
+        model.cls_token.requires_grad = True
+        model.pos_embed.requires_grad  = True
+        for p in model.encoder_blocks.parameters():
+            p.requires_grad = True
+        for p in model.encoder_norm.parameters():
+            p.requires_grad = True
+        for p in model.head.parameters():
+            p.requires_grad = True
+
+        if verbose:
+            n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            n_total     = sum(p.numel() for p in model.parameters())
+            print("\n=== Phase 2: bridge_and_encoder mode (CNNViTHybrid) ===")
+            print("CNN backbone frozen — training: token_proj, cls_token, pos_embed, "
+                  "encoder_blocks, encoder_norm, head")
+            print(f"Trainable: {n_trainable:,} / {n_total:,} params")
+            print()
+
+        return filter(lambda p: p.requires_grad, model.parameters())
 
     elif param_mode == "all":
         # Unfreeze everything
         for param in model.parameters():
             param.requires_grad = True
-        
+
         if verbose:
             print("\n=== Phase 2: all mode ===")
             print("All parameters trainable")
             print()
-        
+
         return model.parameters()
 
     else:
         raise ValueError(f"Unknown parameter mode: '{param_mode}'. "
-                         f"Valid options: 'head_and_attention', 'head', 'all'")
+                         f"Valid options: 'head_and_attention', 'head', 'bridge', "
+                         f"'bridge_and_encoder', 'all'")
 
 ########################################################################################################
 ########################################### NCA-kNN Pipeline ###########################################
