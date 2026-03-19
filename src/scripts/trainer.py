@@ -34,9 +34,9 @@ def get_trainable_parameters(model, param_mode, verbose=False):
             Freeze: transformer encoder
             Train: classifier head only
 
-        "bridge" - For CNNViTHybrid Phase 1 (SRQ3)
-            Freeze: CNN backbone + DeiT encoder blocks
-            Train: token_proj, cls_token, pos_embed, head
+        "bridge" - For CNNMHSAHybrid Phase 1 (SRQ3)
+            Freeze: CNN backbone
+            Train: token_proj, input_norm, pos_embed, mhsa, post_norm, head
 
         "all" - For Phase 2 fine-tuning (all models)
             Train: everything
@@ -83,41 +83,18 @@ def get_trainable_parameters(model, param_mode, verbose=False):
 
         return model.head.parameters()
 
-    elif param_mode == "bridge":
-        # For CNNViTHybrid Phase 1: freeze backbone + encoder, train bridge only
-        for p in model.parameters():
-            p.requires_grad = False
-        for p in model.token_proj.parameters():
-            p.requires_grad = True
-        model.cls_token.requires_grad = True
-        model.pos_embed.requires_grad  = True
-        for p in model.head.parameters():
-            p.requires_grad = True
-
-        if verbose:
-            n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            n_total     = sum(p.numel() for p in model.parameters())
-            print("\n=== Phase 1: bridge mode (CNNViTHybrid) ===")
-            print(f"Backbone + DeiT encoder frozen")
-            print(f"Trainable: token_proj, cls_token, pos_embed, head "
-                  f"({n_trainable:,} / {n_total:,} params)")
-            print()
-
-        return filter(lambda p: p.requires_grad, model.parameters())
-
-    elif param_mode == "bridge_and_encoder":
-        # For CNNViTHybrid Phase 2: keep CNN backbone frozen, train everything else
-        # Freeze backbone only
+    elif param_mode == "mhsa":
+        # For CNNMHSAHybrid: backbone always frozen, train all MHSA components
         for p in model.backbone.parameters():
             p.requires_grad = False
-        # Unfreeze bridge + encoder
         for p in model.token_proj.parameters():
             p.requires_grad = True
-        model.cls_token.requires_grad = True
-        model.pos_embed.requires_grad  = True
-        for p in model.encoder_blocks.parameters():
+        for p in model.input_norm.parameters():
             p.requires_grad = True
-        for p in model.encoder_norm.parameters():
+        model.pos_embed.requires_grad = True
+        for p in model.mhsa.parameters():
+            p.requires_grad = True
+        for p in model.post_norm.parameters():
             p.requires_grad = True
         for p in model.head.parameters():
             p.requires_grad = True
@@ -125,9 +102,9 @@ def get_trainable_parameters(model, param_mode, verbose=False):
         if verbose:
             n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
             n_total     = sum(p.numel() for p in model.parameters())
-            print("\n=== Phase 2: bridge_and_encoder mode (CNNViTHybrid) ===")
-            print("CNN backbone frozen — training: token_proj, cls_token, pos_embed, "
-                  "encoder_blocks, encoder_norm, head")
+            print("\n=== Phase 1: mhsa mode (CNNMHSAHybrid) ===")
+            print("CNN backbone frozen — training: token_proj, input_norm, "
+                  "pos_embed, mhsa, post_norm, head")
             print(f"Trainable: {n_trainable:,} / {n_total:,} params")
             print()
 
@@ -147,8 +124,7 @@ def get_trainable_parameters(model, param_mode, verbose=False):
 
     else:
         raise ValueError(f"Unknown parameter mode: '{param_mode}'. "
-                         f"Valid options: 'head_and_attention', 'head', 'bridge', "
-                         f"'bridge_and_encoder', 'all'")
+                         f"Valid options: 'head_and_attention', 'head', 'mhsa', 'all'")
 
 ########################################################################################################
 ########################################### NCA-kNN Pipeline ###########################################
@@ -235,9 +211,15 @@ def validate_model(model, val_loader, criterion,
 
 def train_model(model, train_loader, val_loader, config_name, train_configs, 
                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), 
-                decision_threshold=0.5, verbose=False, early_stopping_patience=None):
+                decision_threshold=0.5, verbose=False, early_stopping_patience=None,
+                grad_clip_norm=None):
     """
     Train model with validation monitoring and optional early stopping.
+
+    Args:
+        grad_clip_norm: If set, clips gradient norms to this value after loss.backward()
+                        and before optimiser.step(). Recommended for ViT fine-tuning (1.0).
+                        None (default) disables clipping — preserves existing CNN behaviour.
     """
     
     if config_name not in train_configs:
@@ -282,6 +264,8 @@ def train_model(model, train_loader, val_loader, config_name, train_configs,
 
             loss = criterion(outputs, labels)
             loss.backward()
+            if grad_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             optimiser.step()
 
             running_loss += loss.item() * images.size(0)

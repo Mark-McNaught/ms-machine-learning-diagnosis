@@ -465,7 +465,7 @@ class EfficientFormerBinary(nn.Module):
         return self.head(features)
 
 
-# ── CNN-ViT Hybrid ────────────────────────────────────────────────────────────
+# ── CNN-MHSA Hybrid ──────────────────────────────────────────────────────────
 
 # All ResNet18 architecture keys that can serve as a CNN backbone.
 HYBRID_CNN_ARCHS = frozenset({
@@ -475,120 +475,110 @@ HYBRID_CNN_ARCHS = frozenset({
     "cbam_isolated_end", "cbam_isolated_block_pre",
 })
 
-_DEIT_DIM    = 384   # DeiT-Small embedding dimension
-_CNN_OUT_DIM = 512   # ResNet18 layer4 output channels
-_N_SPATIAL   = 49    # 7 × 7 spatial tokens (ResNet18 on 224×224 input)
+_CNN_OUT_DIM  = 512   # ResNet18 layer4 output channels
+_N_SPATIAL    = 49    # 7 × 7 spatial tokens (ResNet18 on 224×224 input)
+_MHSA_DIM     = 256   # Projection dimension for MHSA
+_MHSA_HEADS   = 8     # Number of attention heads (head_dim = 32)
 
 
-class CNNViTHybrid(nn.Module):
+class CNNMHSAHybrid(nn.Module):
     """
-    CNN-ViT Hybrid for SRQ3.
+    CNN + Single Multi-Head Self-Attention Hybrid for SRQ3.
 
-    Architecture (following Dosovitskiy et al., 2021):
-        1. CNN backbone  — any ResNet18 variant → 7x7x512 spatial feature map
+    Positions the architecture as a middle point on the CNN↔ViT complexity
+    spectrum: pure CNN → CNN+local attention (CBAM/SE) → CNN+global attention
+    (this) → pure ViT. Tests whether global spatial self-attention over CNN
+    feature tokens outperforms both local CNN attention variants (SRQ1) and
+    the standalone ViT (SRQ4) under data-scarce conditions.
+
+    Architecture:
+        1. CNN backbone  — any ResNet18 variant → 7×7×512 spatial feature map
+                           (frozen; weights loaded from arch-eval)
         2. Tokenisation  — flatten spatial dims → 49 tokens of 512-dim
-        3. Projection    — Linear(512 → 384) maps CNN channels to DeiT embedding dim
-        4. CLS token     — learnable [CLS] prepended → sequence of 50 x 384
-        5. Pos embedding — learnable positional embeddings (50 x 384) added
-        6. Transformer   — pretrained DeiT-Small encoder blocks + LayerNorm
-        7. Head          — classify from [CLS] token output
+        3. Projection    — Linear(512 → 256) + LayerNorm
+        4. Pos embedding — learnable positional embeddings (49 × 256)
+        5. MHSA          — single nn.MultiheadAttention(256, 8 heads) + residual
+        6. Post-norm     — LayerNorm(256)
+        7. Pooling       — global average pool over 49 tokens → (B, 256)
+        8. Head          — Linear(256 → 1) for binary BCE
+
+    Design rationale:
+        A full DeiT encoder (12 blocks, 21M params) overfits severely on
+        ~1057 training samples. A single MHSA layer adds only ~400K new
+        parameters, is architecturally distinct from CBAM (permutation-aware,
+        joint global attention vs. sequential local pooling), and is the
+        maximum transformer complexity justified by this dataset scale.
 
     Backbone note on "end"-placed attention variants:
         For cbam_end, se_end, and cbam_isolated_end the attention module lives
-        inside self.model.avgpool, which this class intentionally bypasses —
-        the spatial map is taken directly from layer4. The attention gate itself
-        does not fire in the hybrid forward pass; however, layers 1-4 carry
-        representational benefits learned under attention supervision during
-        arch-eval training. This is stated explicitly in the methodology.
-
-        For block-level variants (cbam_block_pre, cbam_block_post, se_block_pre,
-        cbam_isolated_block_pre), attention modules are embedded inside layer1-4
-        and fire normally during the hybrid forward pass.
+        inside avgpool, which this class bypasses — the spatial map is taken
+        directly from layer4. The backbone still carries representational
+        benefits from attention-supervised training in arch-eval.
 
     Args:
-        backbone_arch:   Any ResNet18 architecture key (see HYBRID_CNN_ARCHS).
-        head:            "linear" (recommended) or "mlp".
-        freeze_backbone: Freeze CNN weights during training (default False).
-        num_classes:     Output dimension; 1 for binary BCE classification.
+        backbone_arch:  Any ResNet18 architecture key (see HYBRID_CNN_ARCHS).
+        head:           "linear" (default) or "mlp".
+        num_classes:    Output dimension; 1 for binary BCE classification.
 
     Usage:
-        # From scratch (ImageNet-pretrained backbone, randomly-init projection/head)
-        model = CNNViTHybrid(backbone_arch="cbam_end", head="linear")
-
-        # With pre-trained backbone weights from arch-eval
-        model = CNNViTHybrid(backbone_arch="cbam_end", head="linear")
-        model.load_backbone_weights("arch-eval-results/weights/cbam_end/fold_2.pt")
+        model = CNNMHSAHybrid(backbone_arch="cbam_block_post", head="linear")
+        model.load_backbone_weights("arch-eval-results/weights/cbam_block_post/fold_0.pt")
     """
 
     def __init__(
         self,
-        backbone_arch: str = "cbam_end",
+        backbone_arch: str = "cbam_block_post",
         head: str = "linear",
-        freeze_backbone: bool = False,
         num_classes: int = 1,
     ):
         super().__init__()
 
         if backbone_arch not in HYBRID_CNN_ARCHS:
             raise ValueError(
-                f"backbone_arch='{backbone_arch}' is not a valid ResNet18 architecture.\n"
+                f"backbone_arch='{backbone_arch}' not valid.\n"
                 f"Valid options: {sorted(HYBRID_CNN_ARCHS)}"
             )
 
         self.backbone_arch = backbone_arch
 
-        # ── 1. CNN backbone ───────────────────────────────────────────────────
-        # Instantiate via get_model() so all weight-loading / arch logic is
-        # handled consistently. The classifier head is present but never called
-        # in this class's forward() — _forward_cnn() stops before avgpool.
+        # ── 1. CNN backbone (backbone frozen after load_backbone_weights) ─────
         self.backbone = get_model(backbone_arch, head="linear")
 
-        if freeze_backbone:
-            for p in self.backbone.parameters():
-                p.requires_grad = False
+        # ── 2. Token projection + input normalisation ─────────────────────────
+        self.token_proj = nn.Linear(_CNN_OUT_DIM, _MHSA_DIM)
+        self.input_norm = nn.LayerNorm(_MHSA_DIM)
 
-        # ── 2. Token projection: CNN channels → DeiT embedding dim ───────────
-        self.token_proj = nn.Linear(_CNN_OUT_DIM, _DEIT_DIM)
+        # ── 3. Learnable positional embeddings ────────────────────────────────
+        # Initialised with truncated normal (ViT convention, std=0.02).
+        # No CLS token — global average pooling is used instead to aggregate
+        # the 49 token outputs, keeping the architecture simple and reducing
+        # parameter count.
+        self.pos_embed = nn.Parameter(torch.zeros(1, _N_SPATIAL, _MHSA_DIM))
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
-        # ── 3. Learnable CLS token and positional embeddings ─────────────────
-        # DeiT's pretrained pos_embed covers 14×14+1 = 197 positions.
-        # Our 7×7 spatial map yields 49 tokens, so we cannot reuse those
-        # embeddings directly. Fresh learnable embeddings are used instead,
-        # initialised with truncated normal as per ViT convention.
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, _DEIT_DIM))
-        self.pos_embed  = nn.Parameter(torch.zeros(1, _N_SPATIAL + 1, _DEIT_DIM))
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
-        nn.init.trunc_normal_(self.pos_embed,  std=0.02)
-
-        # ── 4. Pretrained DeiT-Small transformer encoder ─────────────────────
-        # Load full DeiT-Small, transfer only the transformer blocks and norm.
-        # Patch embedding and classification head are discarded.
-        _deit = timm.create_model(
-            "deit_small_patch16_224",
-            pretrained=True,
-            num_classes=0,
+        # ── 4. Single Multi-Head Self-Attention layer ─────────────────────────
+        # batch_first=True: input shape (B, seq, dim)
+        # dropout=0.1 for regularisation
+        self.mhsa     = nn.MultiheadAttention(
+            embed_dim=_MHSA_DIM,
+            num_heads=_MHSA_HEADS,
+            dropout=0.1,
+            batch_first=True,
         )
-        self.encoder_blocks = _deit.blocks   # 12 × TransformerBlock (384-dim, 6 heads)
-        self.encoder_norm   = _deit.norm     # LayerNorm(384)
-        del _deit
+        self.post_norm = nn.LayerNorm(_MHSA_DIM)
 
-        # ── 5. Classification head ────────────────────────────────────────────
-        self.head = build_classifier_head(_DEIT_DIM, num_classes, head)
+        # ── 5. Classification head ─────────────────────────────────────────────
+        self.head = build_classifier_head(_MHSA_DIM, num_classes, head)
 
-        print(
-            f"CNNViTHybrid >>> backbone={backbone_arch!r}  "
-            f"freeze_backbone={freeze_backbone}  head={head!r}"
-        )
+        print(f"CNNMHSAHybrid >>> backbone={backbone_arch!r}  head={head!r}")
         self._print_param_count()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _forward_cnn(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Extract 7×7×512 spatial feature map from the CNN backbone.
-
-        All ResNet18 variants share self.backbone.model.{conv1,bn1,...,layer4}.
-        Execution stops before avgpool so the spatial structure is preserved.
+        Extract 7×7×512 spatial feature map from CNN backbone.
+        Stops before avgpool so spatial structure is preserved.
         Output shape: (B, 512, 7, 7).
         """
         m = self.backbone.model
@@ -605,49 +595,36 @@ class CNNViTHybrid(nn.Module):
     # ── Forward ───────────────────────────────────────────────────────────────
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B = x.size(0)
-
-        # 1. CNN backbone → spatial feature map (B, 512, 7, 7)
+        # 1. CNN backbone → (B, 512, 7, 7)
         spatial = self._forward_cnn(x)
 
-        # 2. Flatten spatial dims → token sequence (B, 49, 512)
+        # 2. Flatten spatial dims → (B, 49, 512)
         tokens = spatial.flatten(2).transpose(1, 2)
 
-        # 3. Project to DeiT embedding dim → (B, 49, 384)
-        tokens = self.token_proj(tokens)
+        # 3. Project + normalise → (B, 49, 256)
+        tokens = self.input_norm(self.token_proj(tokens))
 
-        # 4. Prepend learnable CLS token → (B, 50, 384)
-        cls_tokens = self.cls_token.expand(B, -1, -1)
-        tokens = torch.cat([cls_tokens, tokens], dim=1)
-
-        # 5. Add positional embeddings
+        # 4. Add positional embeddings
         tokens = tokens + self.pos_embed
 
-        # 6. DeiT transformer encoder
-        tokens = self.encoder_blocks(tokens)
-        tokens = self.encoder_norm(tokens)
+        # 5. Single MHSA with residual connection
+        attn_out, _ = self.mhsa(tokens, tokens, tokens)
+        tokens = self.post_norm(tokens + attn_out)
 
-        # 7. Classify from CLS token output (B, 384) → (B, 1)
-        cls_out = tokens[:, 0]
-        return self.head(cls_out)
+        # 6. Global average pool over 49 tokens → (B, 256)
+        pooled = tokens.mean(dim=1)
+
+        # 7. Classify
+        return self.head(pooled)
 
     # ── Weight loading ────────────────────────────────────────────────────────
 
     def load_backbone_weights(self, weights_path: str, device=None):
         """
-        Load pre-trained CNN backbone weights from an arch-eval .pt checkpoint.
-
-        Only backbone parameters are updated. The token projection, positional
-        embeddings, and classification head retain their initialised values —
-        these are randomly initialised and must be learned during SRQ3 training.
-
-        Args:
-            weights_path: Path to a .pt file saved by utils.save_weights() for
-                          the matching backbone architecture.
-            device:       Target device. Defaults to the model's current device.
-
-        Returns:
-            self (for chaining)
+        Load pre-trained CNN backbone weights from an arch-eval checkpoint.
+        Only backbone parameters are updated — MHSA components remain
+        randomly initialised and are trained during SRQ3 training.
+        Backbone is frozen after loading.
         """
         if device is None:
             device = next(self.parameters()).device
@@ -655,28 +632,36 @@ class CNNViTHybrid(nn.Module):
         state = torch.load(weights_path, map_location=device)
         missing, unexpected = self.backbone.load_state_dict(state, strict=False)
 
+        # Freeze backbone after loading
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
         print(f"load_backbone_weights()>>> Loaded from {weights_path}")
+        print(f"  Backbone frozen — {sum(p.numel() for p in self.backbone.parameters()):,} params frozen")
         if missing:
-            print(f"  Keys in model not in checkpoint (expected — head/proj not saved): {len(missing)}")
-        if unexpected:
-            print(f"  Unexpected keys in checkpoint: {unexpected}")
+            print(f"  Missing keys (expected — head not in hybrid): {len(missing)}")
         return self
 
     def _print_param_count(self):
         total     = sum(p.numel() for p in self.parameters())
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        cnn_total = sum(p.numel() for p in self.backbone.parameters())
-        enc_total = sum(p.numel() for p in self.encoder_blocks.parameters())
-        print(f"  Total params   : {total:,}")
-        print(f"  Trainable      : {trainable:,}  ({trainable/total:.0%})")
-        print(f"  ├─ CNN backbone: {cnn_total:,}")
-        print(f"  ├─ DeiT encoder: {enc_total:,}")
-        proj = sum(p.numel() for p in self.token_proj.parameters())
-        head = sum(p.numel() for p in self.head.parameters())
-        pos  = self.pos_embed.numel() + self.cls_token.numel()
-        print(f"  ├─ Projection  : {proj:,}")
-        print(f"  ├─ Pos/CLS     : {pos:,}")
-        print(f"  └─ Head        : {head:,}")
+        cnn       = sum(p.numel() for p in self.backbone.parameters())
+        proj      = sum(p.numel() for p in self.token_proj.parameters())
+        norm_in   = sum(p.numel() for p in self.input_norm.parameters())
+        mhsa      = sum(p.numel() for p in self.mhsa.parameters())
+        norm_post = sum(p.numel() for p in self.post_norm.parameters())
+        head      = sum(p.numel() for p in self.head.parameters())
+        pos       = self.pos_embed.numel()
+        print(f"  Total params     : {total:,}")
+        print(f"  Trainable        : {trainable:,}  ({trainable/total:.0%})")
+        print(f"  ├─ CNN backbone  : {cnn:,}  (frozen after load_backbone_weights)")
+        print(f"  ├─ token_proj    : {proj:,}")
+        print(f"  ├─ input_norm    : {norm_in:,}")
+        print(f"  ├─ pos_embed     : {pos:,}")
+        print(f"  ├─ mhsa          : {mhsa:,}")
+        print(f"  ├─ post_norm     : {norm_post:,}")
+        print(f"  └─ head          : {head:,}")
+
 
 
 #####################################################################################################
@@ -703,21 +688,20 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
         "deit_small"              — DeiT-Small/16 (~22M params, 1.9x ResNet18)
         "efficientformer"         — EfficientFormer-L1 (~12M params, fair comparison)
 
-    CNN-ViT Hybrid (SRQ3):
-        "cnn_vit_hybrid"          — CNNViTHybrid; use backbone_arch to select the
+    CNN-MHSA Hybrid (SRQ3):
+        "cnn_mhsa_hybrid"         — CNNMHSAHybrid; use backbone_arch to select the
                                     CNN backbone (any ResNet18 architecture key).
 
-        Examples:
-            get_model("cnn_vit_hybrid", backbone_arch="cbam_end")
-            get_model("cnn_vit_hybrid", backbone_arch="base", freeze_backbone=True)
+        Example:
+            get_model("cnn_mhsa_hybrid", backbone_arch="cbam_block_post")
 
     Args:
         architecture:    Model architecture key (see above).
         head:            Classifier head type — "linear" (default) or "mlp".
-        backbone_arch:   CNN backbone for "cnn_vit_hybrid" only. Ignored for all
-                         other architectures. Default "cbam_end".
-        freeze_backbone: Freeze CNN backbone weights in "cnn_vit_hybrid" only.
-                         Ignored for all other architectures. Default False.
+        backbone_arch:   CNN backbone for "cnn_mhsa_hybrid" only. Ignored for all
+                         other architectures. Default "cbam_block_post".
+        freeze_backbone: Unused — CNNMHSAHybrid always freezes backbone after
+                         load_backbone_weights(). Kept for API compatibility.
         device:          Target device.
 
     Note: ViT models require timm (pip install timm).
@@ -750,14 +734,13 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
     elif architecture == "efficientformer":
         model = EfficientFormerBinary(head=head)
 
-    # CNN-ViT Hybrid (SRQ3)
-    elif architecture == "cnn_vit_hybrid":
-        model = CNNViTHybrid(
+    # CNN-MHSA Hybrid (SRQ3)
+    elif architecture == "cnn_mhsa_hybrid":
+        model = CNNMHSAHybrid(
             backbone_arch=backbone_arch,
             head=head,
-            freeze_backbone=freeze_backbone,
         )
-        print(f"get_model()>>> architecture='cnn_vit_hybrid'  backbone_arch={backbone_arch!r}  head={head!r}")
+        print(f"get_model()>>> architecture='cnn_mhsa_hybrid'  backbone_arch={backbone_arch!r}  head={head!r}")
         return model.to(device)
 
     else:
@@ -766,7 +749,7 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
             f"Valid CNN options: base, cbam_end, cbam_block_pre, cbam_block_post, "
             f"se_end, se_block_pre, cbam_isolated_end, cbam_isolated_block_pre. "
             f"Valid ViT options: deit_small, efficientformer. "
-            f"Valid hybrid option: cnn_vit_hybrid (use backbone_arch= to set the CNN backbone)."
+            f"Valid hybrid option: cnn_mhsa_hybrid (use backbone_arch= to set the CNN backbone)."
         )
 
     print(f"get_model()>>> architecture={architecture!r}  head={head!r}")
