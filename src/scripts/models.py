@@ -408,35 +408,6 @@ class CBAMIsolatedResNet18(nn.Module):
 ########################################### ViT Model Classes #######################################
 #####################################################################################################
 
-class DeiTSmallBinary(nn.Module):
-    """
-    DeiT-Small/16 for binary MS classification.
-
-    Architecture: 12 transformer layers, 384-dim, 6 attention heads
-    Parameters: ~22M (1.9x ResNet18)
-    Pretrained: ImageNet-1K with distillation
-
-    Use for: SRQ4 standalone ViT baseline (conservative comparison)
-
-    Head default is "linear" to match the CNN experiments and provide a clean
-    SRQ4 comparison. The transformer encoder performs extensive non-linear
-    mixing before the head, making an MLP head redundant.
-    """
-    def __init__(self, num_classes=1, head="linear"):
-        super().__init__()
-        self.model = timm.create_model(
-            'deit_small_patch16_224',
-            pretrained=True,
-            num_classes=0
-        )
-        embed_dim = 384
-        self.head = build_classifier_head(embed_dim, num_classes, head)
-
-    def forward(self, x):
-        features = self.model(x)
-        return self.head(features)
-
-
 class EfficientFormerBinary(nn.Module):
     """
     EfficientFormer-L1 for binary MS classification.
@@ -728,9 +699,7 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
     elif architecture == "cbam_isolated_block_pre":
         model = CBAMIsolatedResNet18(cbam_iso_location="block_pre", head=head)
 
-    # ViT-based models (SRQ4)
-    elif architecture == "deit_small":
-        model = DeiTSmallBinary(head=head)
+    # ViT-based model (SRQ4)
     elif architecture == "efficientformer":
         model = EfficientFormerBinary(head=head)
 
