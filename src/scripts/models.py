@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-
-import numpy as np
 import timm
 
 #####################################################################################################
@@ -15,49 +13,50 @@ import timm
 # The head type is selected via build_classifier_head(in_features, head=...).
 #
 # Supported values:
-#   "mlp"    — two-layer MLP: Linear(in_features->128)->ReLU->Dropout(0.3)->Linear(128->1)  [default]
-#   "linear" — single linear layer: Linear(in_features->1)
+#   "linear" — single linear layer: Linear(in_features->1)  [default]
+#   "mlp"    — two-layer MLP: Linear(in_features->128)->ReLU->Dropout(0.3)->Linear(128->1)
 #
 # Pass head= through get_model() to switch all models simultaneously:
-#   get_model("cbam_end", head="linear")
+#   get_model("cbam_end", head="mlp")
 #
 # Both are compatible with BCEWithLogitsLoss + Adam + the two-phase protocol.
 # No changes to trainer.py or criterion are required for either option.
 
 VALID_HEADS = ("mlp", "linear")
 
-def build_classifier_head(in_features: int, num_classes: int = 1, head: str = "mlp") -> nn.Sequential:
+
+def build_classifier_head(in_features: int, num_classes: int = 1, head: str = "linear") -> nn.Sequential:
     """
     Builds the binary classification head.
     Head designs:
-        "mlp" (default) — two-layer MLP with bottleneck and dropout:
-            Linear(in_features -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> 1)
-        "linear" — single linear layer (linear probe):
+        "linear" (default) — single linear layer (linear probe):
             Linear(in_features -> 1)
+        "mlp" — two-layer MLP with bottleneck and dropout:
+            Linear(in_features -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> 1)
     """
     if head not in VALID_HEADS:
         raise ValueError(f"Unknown head type '{head}'. Choose from: {VALID_HEADS}")
 
-    if head == "linear":
+    if head == "mlp":
         return nn.Sequential(
-            nn.Linear(in_features, num_classes)
+            nn.Linear(in_features, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes)
         )
 
-    # "mlp" — default
+    # "linear" — default
     return nn.Sequential(
-        nn.Linear(in_features, 128),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(128, num_classes)
+        nn.Linear(in_features, num_classes)
     )
 
+
 class ChannelAttention(nn.Module):
-    """ Channel Attention (like SE) """
+    """Channel attention (like SE): avg-pool + max-pool squeezed through shared MLP."""
     def __init__(self, in_channels, reduction=16):
-        super(ChannelAttention, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
-
         self.fc = nn.Sequential(
             nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False),
             nn.ReLU(inplace=True),
@@ -73,9 +72,9 @@ class ChannelAttention(nn.Module):
 
 
 class SpatialAttention(nn.Module):
-    """ Spatial Attention"""
+    """Spatial attention: channel-wise avg+max concatenated through a Conv2d."""
     def __init__(self, kernel_size=7):
-        super(SpatialAttention, self).__init__()
+        super().__init__()
         padding = kernel_size // 2
         self.conv = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
         self.sigmoid = nn.Sigmoid()
@@ -89,9 +88,9 @@ class SpatialAttention(nn.Module):
 
 
 class CBAM(nn.Module):
-    """ CBAM Block = Channel + Spatial attention """
+    """CBAM block: sequential channel then spatial attention."""
     def __init__(self, in_channels, reduction=16, kernel_size=7):
-        super(CBAM, self).__init__()
+        super().__init__()
         self.ca = ChannelAttention(in_channels, reduction)
         self.sa = SpatialAttention(kernel_size)
 
@@ -102,7 +101,7 @@ class CBAM(nn.Module):
 
 
 class BasicBlockCBAMPre(nn.Module):
-    """ CBAM applied after block convolutions, before residual addition """
+    """CBAM applied after block convolutions, before residual addition."""
     def __init__(self, block: nn.Module, channels: int):
         super().__init__()
         self.block = block
@@ -130,7 +129,7 @@ class BasicBlockCBAMPre(nn.Module):
 
 
 class BasicBlockCBAMPost(nn.Module):
-    """ CBAM applied after residual addition """
+    """CBAM applied after residual addition."""
     def __init__(self, block: nn.Module, channels: int):
         super().__init__()
         self.block = block
@@ -161,8 +160,9 @@ class SEBlock(nn.Module):
         y = self.fc(y)
         return x * y
 
+
 class BasicBlockSEPre(nn.Module):
-    """ SE applied after block convolutions, before residual addition """
+    """SE applied after block convolutions, before residual addition."""
     def __init__(self, block: nn.Module, channels: int):
         super().__init__()
         self.block = block
@@ -232,7 +232,7 @@ class CBAMIsolated(nn.Module):
 
 
 class BasicBlockCBAMIsolatedPre(nn.Module):
-    """ CBAMIsolated applied after block convolutions, before residual addition """
+    """CBAMIsolated applied after block convolutions, before residual addition."""
     def __init__(self, block: nn.Module, channels: int):
         super().__init__()
         self.block = block
@@ -263,32 +263,62 @@ class BasicBlockCBAMIsolatedPre(nn.Module):
 ######################################## ResNet18 Model Classes #####################################
 #####################################################################################################
 
-class BaseResNet18(nn.Module):
+class _ResNet18Mixin:
+    """
+    Shared behaviour for all ResNet18-based model classes.
+
+    Provides two forward helpers and the common _wrap_layer utility
+
+    forward_spatial(x)
+        Runs the backbone up to and including layer4, stopping before avgpool.
+        Returns (B, 512, 7, 7) — used by CNNMHSAHybrid._forward_cnn to obtain
+        the spatial feature map for tokenisation.
+
+    forward(x, return_features=False)
+        Standard forward pass. When return_features=True, continues from
+        forward_spatial through avgpool and returns a flattened 512-dim vector
+        for the NCA-kNN pipeline in trainer.py.
+
+    _wrap_layer(layer, channels, wrapper)
+        Replaces every BasicBlock in a ResNet18 layer with a wrapped version.
+        Used by CBAMResNet18, SEResNet18, and CBAMIsolatedResNet18.
+    """
+    def forward_spatial(self, x) -> torch.Tensor:
+        """Returns the 7x7x512 spatial feature map, stopping before avgpool."""
+        m = self.model
+        x = m.conv1(x)
+        x = m.bn1(x)
+        x = m.relu(x)
+        x = m.maxpool(x)
+        x = m.layer1(x)
+        x = m.layer2(x)
+        x = m.layer3(x)
+        x = m.layer4(x)
+        return x  # (B, 512, 7, 7)
+
+    def forward(self, x, return_features=False):
+        if return_features:
+            x = self.forward_spatial(x)
+            x = self.model.avgpool(x)
+            return torch.flatten(x, 1)  # (B, 512)
+        return self.model(x)
+
+    def _wrap_layer(self, layer, channels, wrapper):
+        return nn.Sequential(*[wrapper(block, channels) for block in layer])
+
+
+class BaseResNet18(_ResNet18Mixin, nn.Module):
     """Plain ResNet18 with custom classifier head."""
-    def __init__(self, num_classes=1, head="mlp"):
+    def __init__(self, num_classes=1, head="linear"):
         super().__init__()
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         num_features = self.model.fc.in_features
         self.model.fc = build_classifier_head(num_features, num_classes, head)
 
-    def forward(self, x, return_features=False):
-        if return_features:
-            x = self.model.conv1(x)
-            x = self.model.bn1(x)
-            x = self.model.relu(x)
-            x = self.model.maxpool(x)
-            x = self.model.layer1(x)
-            x = self.model.layer2(x)
-            x = self.model.layer3(x)
-            x = self.model.layer4(x)
-            x = self.model.avgpool(x)
-            return torch.flatten(x, 1)
-        return self.model(x)
 
-
-class CBAMResNet18(nn.Module):
+class CBAMResNet18(_ResNet18Mixin, nn.Module):
     """ResNet18 with flexible CBAM placement."""
-    def __init__(self, num_classes=1, cbam_location="end", head="mlp"):
+    def __init__(self, num_classes=1, cbam_location="end", head="linear"):
         super().__init__()
         self.cbam_location = cbam_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -308,27 +338,10 @@ class CBAMResNet18(nn.Module):
         num_features = self.model.fc.in_features
         self.model.fc = build_classifier_head(num_features, num_classes, head)
 
-    def _wrap_layer(self, layer, channels, wrapper):
-        return nn.Sequential(*[wrapper(block, channels) for block in layer])
 
-    def forward(self, x, return_features=False):
-        if return_features:
-            x = self.model.conv1(x)
-            x = self.model.bn1(x)
-            x = self.model.relu(x)
-            x = self.model.maxpool(x)
-            x = self.model.layer1(x)
-            x = self.model.layer2(x)
-            x = self.model.layer3(x)
-            x = self.model.layer4(x)
-            x = self.model.avgpool(x)
-            return torch.flatten(x, 1)
-        return self.model(x)
-
-
-class SEResNet18(nn.Module):
+class SEResNet18(_ResNet18Mixin, nn.Module):
     """ResNet18 with flexible SE placement."""
-    def __init__(self, num_classes=1, se_location="end", head="mlp"):
+    def __init__(self, num_classes=1, se_location="end", head="linear"):
         super().__init__()
         self.se_location = se_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -347,36 +360,19 @@ class SEResNet18(nn.Module):
         num_features = self.model.fc.in_features
         self.model.fc = build_classifier_head(num_features, num_classes, head)
 
-    def _wrap_layer(self, layer, channels, wrapper):
-        return nn.Sequential(*[wrapper(block, channels) for block in layer])
 
-    def forward(self, x, return_features=False):
-        if return_features:
-            x = self.model.conv1(x)
-            x = self.model.bn1(x)
-            x = self.model.relu(x)
-            x = self.model.maxpool(x)
-            x = self.model.layer1(x)
-            x = self.model.layer2(x)
-            x = self.model.layer3(x)
-            x = self.model.layer4(x)
-            x = self.model.avgpool(x)
-            return torch.flatten(x, 1)
-        return self.model(x)
-
-
-class CBAMIsolatedResNet18(nn.Module):
+class CBAMIsolatedResNet18(_ResNet18Mixin, nn.Module):
     """ResNet18 with CBAMIsolated — spatial attention isolation experiment."""
-    def __init__(self, num_classes=1, cbam_iso_location="end", head="mlp"):
+    def __init__(self, num_classes=1, cbam_iso_location="end", head="linear"):
         super().__init__()
         self.cbam_iso_location = cbam_iso_location
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 
         if cbam_iso_location == "block_pre":
-            self.model.layer1 = self._wrap_layer(self.model.layer1, 64)
-            self.model.layer2 = self._wrap_layer(self.model.layer2, 128)
-            self.model.layer3 = self._wrap_layer(self.model.layer3, 256)
-            self.model.layer4 = self._wrap_layer(self.model.layer4, 512)
+            self.model.layer1 = self._wrap_layer(self.model.layer1, 64,  BasicBlockCBAMIsolatedPre)
+            self.model.layer2 = self._wrap_layer(self.model.layer2, 128, BasicBlockCBAMIsolatedPre)
+            self.model.layer3 = self._wrap_layer(self.model.layer3, 256, BasicBlockCBAMIsolatedPre)
+            self.model.layer4 = self._wrap_layer(self.model.layer4, 512, BasicBlockCBAMIsolatedPre)
         else:
             self.model.avgpool = nn.Sequential(
                 CBAMIsolated(512),
@@ -386,22 +382,6 @@ class CBAMIsolatedResNet18(nn.Module):
         num_features = self.model.fc.in_features
         self.model.fc = build_classifier_head(num_features, num_classes, head)
 
-    def _wrap_layer(self, layer, channels):
-        return nn.Sequential(*[BasicBlockCBAMIsolatedPre(block, channels) for block in layer])
-
-    def forward(self, x, return_features=False):
-        if return_features:
-            x = self.model.conv1(x)
-            x = self.model.bn1(x)
-            x = self.model.relu(x)
-            x = self.model.maxpool(x)
-            x = self.model.layer1(x)
-            x = self.model.layer2(x)
-            x = self.model.layer3(x)
-            x = self.model.layer4(x)
-            x = self.model.avgpool(x)
-            return torch.flatten(x, 1)
-        return self.model(x)
 
 
 #####################################################################################################
@@ -417,17 +397,10 @@ class EfficientFormerBinary(nn.Module):
     Pretrained: ImageNet-1K
 
     Use for: SRQ4 standalone ViT baseline (fair parameter-matched comparison)
-
-    Head default is "linear" to match the CNN experiments and eliminate head
-    capacity as a confound in the SRQ4 CNN vs ViT comparison.
     """
     def __init__(self, num_classes=1, head="linear"):
         super().__init__()
-        self.model = timm.create_model(
-            'efficientformer_l1',
-            pretrained=True,
-            num_classes=0
-        )
+        self.model = timm.create_model('efficientformer_l1', pretrained=True, num_classes=0)
         embed_dim = self.model.num_features
         self.head = build_classifier_head(embed_dim, num_classes, head)
 
@@ -436,7 +409,9 @@ class EfficientFormerBinary(nn.Module):
         return self.head(features)
 
 
-# ── CNN-MHSA Hybrid ──────────────────────────────────────────────────────────
+#####################################################################################################
+######################################### CNN-MHSA Hybrid ###########################################
+#####################################################################################################
 
 # All ResNet18 architecture keys that can serve as a CNN backbone.
 HYBRID_CNN_ARCHS = frozenset({
@@ -447,7 +422,7 @@ HYBRID_CNN_ARCHS = frozenset({
 })
 
 _CNN_OUT_DIM  = 512   # ResNet18 layer4 output channels
-_N_SPATIAL    = 49    # 7 × 7 spatial tokens (ResNet18 on 224×224 input)
+_N_SPATIAL    = 49    # 7 x 7 spatial tokens (ResNet18 on 224x224 input)
 _MHSA_DIM     = 256   # Projection dimension for MHSA
 _MHSA_HEADS   = 8     # Number of attention heads (head_dim = 32)
 
@@ -463,11 +438,11 @@ class CNNMHSAHybrid(nn.Module):
     the standalone ViT (SRQ4) under data-scarce conditions.
 
     Architecture:
-        1. CNN backbone  — any ResNet18 variant → 7×7×512 spatial feature map
+        1. CNN backbone  — any ResNet18 variant → 7x7x512 spatial feature map
                            (frozen; weights loaded from arch-eval)
         2. Tokenisation  — flatten spatial dims → 49 tokens of 512-dim
         3. Projection    — Linear(512 → 256) + LayerNorm
-        4. Pos embedding — learnable positional embeddings (49 × 256)
+        4. Pos embedding — learnable positional embeddings (49 x 256)
         5. MHSA          — single nn.MultiheadAttention(256, 8 heads) + residual
         6. Post-norm     — LayerNorm(256)
         7. Pooling       — global average pool over 49 tokens → (B, 256)
@@ -530,7 +505,7 @@ class CNNMHSAHybrid(nn.Module):
         # ── 4. Single Multi-Head Self-Attention layer ─────────────────────────
         # batch_first=True: input shape (B, seq, dim)
         # dropout=0.1 for regularisation
-        self.mhsa     = nn.MultiheadAttention(
+        self.mhsa = nn.MultiheadAttention(
             embed_dim=_MHSA_DIM,
             num_heads=_MHSA_HEADS,
             dropout=0.1,
@@ -548,20 +523,12 @@ class CNNMHSAHybrid(nn.Module):
 
     def _forward_cnn(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Extract 7×7×512 spatial feature map from CNN backbone.
-        Stops before avgpool so spatial structure is preserved.
+        Extract 7x7x512 spatial feature map from the CNN backbone.
+        Delegates to backbone.forward_spatial() — stops before avgpool so
+        spatial structure is preserved for tokenisation.
         Output shape: (B, 512, 7, 7).
         """
-        m = self.backbone.model
-        x = m.conv1(x)
-        x = m.bn1(x)
-        x = m.relu(x)
-        x = m.maxpool(x)
-        x = m.layer1(x)
-        x = m.layer2(x)
-        x = m.layer3(x)
-        x = m.layer4(x)
-        return x  # (B, 512, 7, 7)
+        return self.backbone.forward_spatial(x)
 
     # ── Forward ───────────────────────────────────────────────────────────────
 
@@ -634,14 +601,12 @@ class CNNMHSAHybrid(nn.Module):
         print(f"  └─ head          : {head:,}")
 
 
-
 #####################################################################################################
 ########################################### Model Factory ###########################################
 #####################################################################################################
 
-def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
-              freeze_backbone=False,
-              device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+def get_model(architecture="base", head="linear", backbone_arch="cbam_block_post",
+              device=None):
     """
     Factory function to instantiate models by name.
 
@@ -656,7 +621,6 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
         "cbam_isolated_block_pre" — ResNet18 + CBAMIsolated inside each block
 
     ViT Architecture keys (SRQ4):
-        "deit_small"              — DeiT-Small/16 (~22M params, 1.9x ResNet18)
         "efficientformer"         — EfficientFormer-L1 (~12M params, fair comparison)
 
     CNN-MHSA Hybrid (SRQ3):
@@ -667,16 +631,16 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
             get_model("cnn_mhsa_hybrid", backbone_arch="cbam_block_post")
 
     Args:
-        architecture:    Model architecture key (see above).
-        head:            Classifier head type — "linear" (default) or "mlp".
-        backbone_arch:   CNN backbone for "cnn_mhsa_hybrid" only. Ignored for all
-                         other architectures. Default "cbam_block_post".
-        freeze_backbone: Unused — CNNMHSAHybrid always freezes backbone after
-                         load_backbone_weights(). Kept for API compatibility.
-        device:          Target device.
+        architecture:  Model architecture key (see above).
+        head:          Classifier head type — "linear" (default) or "mlp".
+        backbone_arch: CNN backbone for "cnn_mhsa_hybrid" only. Ignored for all
+                       other architectures. Default "cbam_block_post".
+        device:        Target device. Defaults to CUDA if available, else CPU.
 
     Note: ViT models require timm (pip install timm).
     """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ResNet18-based models
     if architecture == "base":
@@ -705,10 +669,7 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
 
     # CNN-MHSA Hybrid (SRQ3)
     elif architecture == "cnn_mhsa_hybrid":
-        model = CNNMHSAHybrid(
-            backbone_arch=backbone_arch,
-            head=head,
-        )
+        model = CNNMHSAHybrid(backbone_arch=backbone_arch, head=head)
         print(f"get_model()>>> architecture='cnn_mhsa_hybrid'  backbone_arch={backbone_arch!r}  head={head!r}")
         return model.to(device)
 
@@ -717,7 +678,7 @@ def get_model(architecture="base", head="mlp", backbone_arch="cbam_end",
             f"Unknown architecture: '{architecture}'. "
             f"Valid CNN options: base, cbam_end, cbam_block_pre, cbam_block_post, "
             f"se_end, se_block_pre, cbam_isolated_end, cbam_isolated_block_pre. "
-            f"Valid ViT options: deit_small, efficientformer. "
+            f"Valid ViT options: efficientformer. "
             f"Valid hybrid option: cnn_mhsa_hybrid (use backbone_arch= to set the CNN backbone)."
         )
 
