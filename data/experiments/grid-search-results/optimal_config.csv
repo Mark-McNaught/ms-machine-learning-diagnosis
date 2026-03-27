@@ -1,0 +1,2 @@
+lr_phase1,wd_phase1,lr_phase2,weight_decay,fold,val_acc,val_loss,val_f1,p1_epochs_run,p2_epochs_run,timestamp,error
+0.001,0,0.0001,0.0001,mean,0.937937,0.223035,0.917466,16.0,10.0,2026-03-27T07:55:54,

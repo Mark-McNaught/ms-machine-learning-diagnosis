@@ -1,0 +1,2 @@
+head,mean_val_f1,mean_val_acc,mean_val_loss,n_folds,timestamp
+linear,0.917381,0.937156,0.199637,5,2026-03-27T06:42:54

@@ -1,0 +1,6 @@
+architecture,lr_phase1,wd_phase1,lr_phase2,weight_decay,fold,val_acc,val_loss,val_f1,p1_epochs_run,p2_epochs_run,weights_path,timestamp,error
+efficientformer,0.001,0.0,0.0001,0.0001,0,0.9547,0.1731,0.94,20,7,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\vit-comparison-results\weights\efficientformer\fold_0.pt,2026-03-21T20:04:14,
+efficientformer,0.001,0.0,0.0001,0.0001,1,0.7955,0.7976,0.7891,20,7,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\vit-comparison-results\weights\efficientformer\fold_1.pt,2026-03-21T20:39:30,
+efficientformer,0.001,0.0,0.0001,0.0001,2,0.9394,0.4805,0.9167,20,9,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\vit-comparison-results\weights\efficientformer\fold_2.pt,2026-03-21T21:19:22,
+efficientformer,0.001,0.0,0.0001,0.0001,3,0.928,0.2501,0.9132,20,9,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\vit-comparison-results\weights\efficientformer\fold_3.pt,2026-03-21T21:59:57,
+efficientformer,0.001,0.0,0.0001,0.0001,4,0.7652,0.8008,0.7669,20,4,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\vit-comparison-results\weights\efficientformer\fold_4.pt,2026-03-21T22:28:53,

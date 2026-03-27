@@ -1,0 +1,6 @@
+Model,Test F1,AUC-ROC,ECE,Accuracy,Precision,Recall
+Baseline (ResNet18),0.9147,0.9855,0.0463,0.9335,0.9219,0.9077
+Best SRQ1 (cbam_block_post),0.9407,0.9883,0.0369,0.9547,0.9675,0.9154
+Best SRQ2 NCA+kNN (se_end),0.9375,,,,,
+Best SRQ3 CNN-MHSA (base),0.9132,0.987,0.0547,0.9305,0.8963,0.9308
+EfficientFormer (SRQ4),0.9306,0.9827,0.0471,0.9486,0.9913,0.8769

@@ -1,0 +1,2 @@
+backbone,target_dim,k,mean_f1,std_f1
+base,64,3,0.984451,0.016203

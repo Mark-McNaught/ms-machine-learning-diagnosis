@@ -1,0 +1,6 @@
+backbone_arch,backbone_fold,head,fold,val_acc,val_loss,val_f1,epochs_run,weights_path,timestamp,error
+base,2,linear,0,0.996226,0.015325,0.995215,6,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\cnn-mhsa-hybrid-results\weights\base\fold_0.pt,2026-03-18T15:05:35,
+base,2,linear,1,1.0,0.005215,1.0,11,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\cnn-mhsa-hybrid-results\weights\base\fold_1.pt,2026-03-18T15:16:05,
+base,2,linear,2,0.935606,0.192385,0.910995,7,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\cnn-mhsa-hybrid-results\weights\base\fold_2.pt,2026-03-18T15:22:37,
+base,2,linear,3,1.0,0.00862,1.0,13,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\cnn-mhsa-hybrid-results\weights\base\fold_3.pt,2026-03-18T15:34:24,
+base,2,linear,4,0.996212,0.012708,0.995215,11,C:\Users\markm\Workspace\ms-machine-learning-diagnosis\data\experiments\cnn-mhsa-hybrid-results\weights\base\fold_4.pt,2026-03-18T15:46:17,
