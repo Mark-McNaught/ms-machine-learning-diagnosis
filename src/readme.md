@@ -43,24 +43,24 @@ project_root/
 │           ├── training-curves/
 │           └── plots/
 │
-├── src/
-│   └── scripts/
-│       ├── data.py        # Dataset loading, transforms, splits, DataLoaders
-│       ├── models.py      # Model definitions (ResNet18 variants, EfficientFormer, CNN-MHSA)
-│       ├── trainer.py     # Training loops (two-phase protocol), feature extraction
-│       ├── evaluator.py   # Test set evaluation (F1, AUC, ECE, confusion matrix)
-│       └── utils.py       # Seed setting, weight I/O, run-resumption helpers
-│
-└── notebooks/
-    ├── grid-search.ipynb         # Hyperparameter search (run first)
-    ├── head-ablation.ipynb       # MLP vs linear probe ablation (run second)
-    ├── arch-eval.ipynb           # SRQ1 — 8-architecture evaluation
-    ├── nca-knn-eval.ipynb        # SRQ2 — NCA + kNN metric learning pipeline
-    ├── cnn-mhsa-hybrid.ipynb     # SRQ3 — CNN + tokenised self-attention head
-    └── vit-comparison-final.ipynb # SRQ4 — Grand comparison with EfficientFormer
+└── src/
+    ├── scripts/
+    │   ├── data.py        # Dataset loading, transforms, splits, DataLoaders
+    │   ├── models.py      # Model definitions (ResNet18 variants, EfficientFormer, CNN-MHSA)
+    │   ├── trainer.py     # Training loops (two-phase protocol), feature extraction
+    │   ├── evaluator.py   # Test set evaluation (F1, AUC, ECE, confusion matrix)
+    │   └── utils.py       # Seed setting, weight I/O, run-resumption helpers
+    ├── models/            # Legacy — do not run
+    └── experiments/
+        ├── grid-search.ipynb         # Hyperparameter search (run first)
+        ├── head-ablation.ipynb       # MLP vs linear probe ablation (run second)
+        ├── arch-eval.ipynb           # SRQ1 — 8-architecture evaluation
+        ├── nca-knn-eval.ipynb        # SRQ2 — NCA + kNN metric learning pipeline
+        ├── cnn-mhsa-hybrid.ipynb     # SRQ3 — CNN + tokenised self-attention head
+        └── vit-comparison-final.ipynb # SRQ4 — Grand comparison with EfficientFormer
 ```
 
-All notebooks must be run from their own directory (two levels below the project root) so that relative `Path().resolve().parents[1]` resolves correctly to the project root.
+All notebooks must be run from `src/experiments/` (two levels below the project root) so that relative `Path().resolve().parents[1]` resolves correctly to the project root.
 
 ---
 
@@ -78,7 +78,7 @@ Key dependencies include:
 - `torch` / `torchvision` (PyTorch ≥ 2.0)
 - `timm` (for EfficientFormer-L1)
 - `scikit-learn` (cross-validation, NCA, kNN, metrics)
-- `pandas`, `numpy`, `matplotlib`, `seaborn`
+- `pandas`, `numpy`, `matplotlib`
 - `jupyter` or `jupyterlab`
 
 ### Build Steps
