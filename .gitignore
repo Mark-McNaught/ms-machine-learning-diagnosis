@@ -1,5 +1,5 @@
 # Ignore datasets
-data/raw
+data/raw/*
 
 # Ignore model training curves and other generated plots
 *.png
