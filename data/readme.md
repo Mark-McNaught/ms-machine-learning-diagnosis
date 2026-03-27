@@ -1,20 +1,18 @@
 # Data Directory
 
-This directory is populated automatically as notebooks are run in order.
-No manual setup is required beyond installing dependencies — all result
-files, plots, training curves, and CSVs will be written to the correct
-subdirectories on completion of each notebook.
+This directory is intentionally empty in this submission.
 
-See `src/experiments/` for the notebooks and the main `README.md` for
-the full run order.
+All contents — result CSVs, plots, training curves, and model weights —
+are generated automatically by running the notebooks in order. No manual
+population is required. See the main `README.md` for the full run order
+and setup instructions.
 
-## Trained weights
+## Why the directory is empty
 
-Model weight files (`.pt`) are not included in this submission zip due to
-file size constraints. They are available by cloning the project repository:
-```
-https://github.com/Mark-McNaught/ms-machine-learning-diagnosis.git
-```
+**Weights** (`.pt` files) could not be included due to zip file size
+constraints on submission.
 
-Once cloned, all weights will be present under `data/experiments/*/weights/`
-and no notebooks need to be re-run to reproduce test evaluations.
+**CSV result files** have been omitted as they are purely a logging
+by-product of training — they are regenerated alongside the weights when
+the notebooks are run and do not constitute standalone reproducible
+outputs without them.
