@@ -32,7 +32,7 @@ The plain ResNet18 baseline proved a strong foundation (F1=0.9147, AUC-ROC=0.985
 │
 ├── data/
 │   ├── raw/...                   # MRI scan dataset (not included — see below)
-│   └── experiments/              # Saved experiment outputs and metrics (generate from experiments)
+│   └── experiments/              # Saved experiment outputs and metrics (generated from experiments)
 │
 ├── presentation/                 # Final presentation slides
 │
@@ -57,7 +57,7 @@ The plain ResNet18 baseline proved a strong foundation (F1=0.9147, AUC-ROC=0.985
 > constraints, and CSV result files have been omitted as they are
 > generated as a by-product of training — without the weights they do not
 > constitute a reproducible state. All contents are populated automatically
-> by running the notebooks in order.
+> by running the notebooks in order, or can be fetched from the remote github repository (see data/readme).
 
 
 > **Note:** The standalone scripts in `src/models/` are early pilot implementations and are no longer compatible with the updated shared scripts. They are retained for reference only and are not required to reproduce any results in the dissertation.
