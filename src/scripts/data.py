@@ -15,28 +15,26 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 #####################################################################################################
 
 def get_dataset(DATA_DIR):
-    """
-    Downloads the MS dataset from Kagglehub if it is not already downloaded.
-    Returns the path to the dataset as well as a list of available subdatasets.
-    """
-    
     # Set custom download directory
     os.environ["KAGGLEHUB_CACHE"] = DATA_DIR
 
-    # Download dataset if not already present
-    if not os.listdir(DATA_DIR):
-        path = kagglehub.dataset_download("buraktaci/multiple-sclerosis")
-        print("get_dataset()>>> Dataset downloaded to:", path)
-    else:
-        print(f"get_dataset()>>> Dataset already exists in {DATA_DIR}")
-        path = os.path.join(DATA_DIR, "datasets/buraktaci/multiple-sclerosis/versions/1/MS/")
-    
-    # List available categories
-    categories = os.listdir(path)
-    sorted_categories = sorted(categories)
-    print("get_dataset()>>> Available categories:", sorted_categories)
+    downloaded_path = kagglehub.dataset_download("buraktaci/multiple-sclerosis")
 
-    return path, sorted_categories
+    if "MS" not in os.path.split(downloaded_path)[1]:
+        path = os.path.join(downloaded_path, "MS")
+    else:
+        path = downloaded_path
+    
+    # List available categories (Axial, Saggital, etc.)
+    categories = sorted(os.listdir(path))
+    
+    # Filter out hidden files like .DS_Store or metadata
+    categories = [c for c in categories if not c.startswith('.')]
+    
+    print("get_dataset()>>> Final path:", path)
+    print("get_dataset()>>> Available categories:", categories)
+
+    return path, categories
 
 def get_classes(path, categories, axial=True, saggital=False, visualise=True, num_samples=3):
     """
