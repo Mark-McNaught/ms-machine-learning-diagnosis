@@ -7,7 +7,7 @@ import timm
 ###################################### Model Component Modules ######################################
 #####################################################################################################
 
-# ── Classifier Head ───────────────────────────────────────────────────────────
+# Classifier Head
 #
 # All models in this file use the same binary classification head system.
 # The head type is selected via build_classifier_head(in_features, head=...).
@@ -487,14 +487,14 @@ class CNNMHSAHybrid(nn.Module):
 
         self.backbone_arch = backbone_arch
 
-        # ── 1. CNN backbone (backbone frozen after load_backbone_weights) ─────
+        # 1. CNN backbone (backbone frozen after load_backbone_weights)
         self.backbone = get_model(backbone_arch, head="linear")
 
-        # ── 2. Token projection + input normalisation ─────────────────────────
+        # 2. Token projection + input normalisation 
         self.token_proj = nn.Linear(_CNN_OUT_DIM, _MHSA_DIM)
         self.input_norm = nn.LayerNorm(_MHSA_DIM)
 
-        # ── 3. Learnable positional embeddings ────────────────────────────────
+        # 3. Learnable positional embeddings
         # Initialised with truncated normal (ViT convention, std=0.02).
         # No CLS token — global average pooling is used instead to aggregate
         # the 49 token outputs, keeping the architecture simple and reducing
@@ -502,7 +502,7 @@ class CNNMHSAHybrid(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, _N_SPATIAL, _MHSA_DIM))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
-        # ── 4. Single Multi-Head Self-Attention layer ─────────────────────────
+        # 4. Single Multi-Head Self-Attention layer
         # batch_first=True: input shape (B, seq, dim)
         # dropout=0.1 for regularisation
         self.mhsa = nn.MultiheadAttention(
@@ -513,13 +513,13 @@ class CNNMHSAHybrid(nn.Module):
         )
         self.post_norm = nn.LayerNorm(_MHSA_DIM)
 
-        # ── 5. Classification head ─────────────────────────────────────────────
+        # 5. Classification head 
         self.head = build_classifier_head(_MHSA_DIM, num_classes, head)
 
         print(f"CNNMHSAHybrid >>> backbone={backbone_arch!r}  head={head!r}")
         self._print_param_count()
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
+    # Internal helpers 
 
     def _forward_cnn(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -530,7 +530,7 @@ class CNNMHSAHybrid(nn.Module):
         """
         return self.backbone.forward_spatial(x)
 
-    # ── Forward ───────────────────────────────────────────────────────────────
+    # Forward
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # 1. CNN backbone → (B, 512, 7, 7)
@@ -555,7 +555,7 @@ class CNNMHSAHybrid(nn.Module):
         # 7. Classify
         return self.head(pooled)
 
-    # ── Weight loading ────────────────────────────────────────────────────────
+    # Weight loading
 
     def load_backbone_weights(self, weights_path: str, device=None):
         """

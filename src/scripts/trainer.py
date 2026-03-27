@@ -209,6 +209,7 @@ def validate_model(model, val_loader, criterion,
     
     return val_loss, val_acc
 
+
 def train_model(model, train_loader, val_loader, config_name, train_configs, 
                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), 
                 decision_threshold=0.5, verbose=False, early_stopping_patience=None,

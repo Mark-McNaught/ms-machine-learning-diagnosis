@@ -135,7 +135,7 @@ def plot(losses, accuracies, config_name, val_losses=None, val_accuracies=None,
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(f"{model_name} — {config_name}", fontsize=14, fontweight="bold")
 
-    # ── Loss ──────────────────────────────────────────────────────────────────
+    # Loss
     axes[0].plot(epochs, losses, "b-", marker="o", linewidth=2, label="Train Loss")
     if val_losses:
         axes[0].plot(epochs, val_losses, "r-", marker="s", linewidth=2, label="Val Loss")
@@ -145,7 +145,7 @@ def plot(losses, accuracies, config_name, val_losses=None, val_accuracies=None,
     axes[0].legend()
     axes[0].grid(True, linestyle="--", alpha=0.5)
 
-    # ── Accuracy ──────────────────────────────────────────────────────────────
+    # Accuracy
     axes[1].plot(epochs, accuracies, "b-", marker="o", linewidth=2, label="Train Acc")
     if val_accuracies:
         axes[1].plot(epochs, val_accuracies, "r-", marker="s", linewidth=2, label="Val Acc")
