@@ -52,4 +52,13 @@ The plain ResNet18 baseline proved a strong foundation (F1=0.9147, AUC-ROC=0.985
 ```
 
 
+> **Note on the data directory**: The `data/` directory is empty in this
+> submission. Weight files (`.pt`) could not be included due to zip size
+> constraints, and CSV result files have been omitted as they are
+> generated as a by-product of training — without the weights they do not
+> constitute a reproducible state. All contents are populated automatically
+> by running the notebooks in order, or are available in full by cloning
+> the repository (see `data/README.md`).
+
+
 > **Note:** The standalone scripts in `src/models/` are early pilot implementations and are no longer compatible with the updated shared scripts. They are retained for reference only and are not required to reproduce any results in the dissertation.
