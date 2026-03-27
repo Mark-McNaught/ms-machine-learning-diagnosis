@@ -32,7 +32,7 @@ The plain ResNet18 baseline proved a strong foundation (F1=0.9147, AUC-ROC=0.985
 │
 ├── data/
 │   ├── raw/...                   # MRI scan dataset (not included — see below)
-│   └── experiments/              # Saved experiment outputs and metrics
+│   └── experiments/              # Saved experiment outputs and metrics (generate from experiments)
 │
 ├── presentation/                 # Final presentation slides
 │
